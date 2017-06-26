@@ -1,9 +1,23 @@
 use std::{env, process};
+use std::fmt::Display;
 use std::io::{stdout, stderr, BufWriter, Write};
 
 use ec::{Ec, EcFile, EcFlash};
 
 mod ec;
+
+fn validate<T: PartialEq + Display, F: FnMut() -> T>(mut f: F, attempts: usize) -> Option<T> {
+    for _attempt_i in 0..attempts {
+        let a = f();
+        let b = f();
+        if a == b {
+            return Some(a);
+        } else {
+            let _ = writeln!(stderr(), "Attempt {}: {} != {}", _attempt_i, a, b);
+        }
+    }
+    None
+}
 
 fn main() {
     let mut ecs: Vec<(String, Box<Ec>)> = Vec::new();
@@ -59,14 +73,44 @@ fn main() {
     }
 
     let mut stdout = BufWriter::new(stdout());
+
     for (name, mut ec) in ecs {
         if name.is_empty() {
             let _ = writeln!(stdout, "EC Flash");
         } else {
             let _ = writeln!(stdout, "EC File {}:", name);
         }
-        let _ = writeln!(stdout, "  Project: {}", ec.project());
-        let _ = writeln!(stdout, "  Version: {}", ec.version());
-        let _ = writeln!(stdout, "  Size: {} KB", ec.size()/1024);
+
+        match validate(|| ec.project(), 8) {
+            Some(project) => {
+                let _ = writeln!(stdout, "  Project: {}", project);
+            },
+            None => {
+                let _ = writeln!(stderr(), "Failed to read EC project");
+                process::exit(1);
+            }
+        }
+
+        match validate(|| ec.version(), 8) {
+            Some(version) => {
+                let _ = writeln!(stdout, "  Version: {}", version);
+            },
+            None => {
+                let _ = writeln!(stderr(), "Failed to read EC version");
+                process::exit(1);
+            }
+        }
+
+        match validate(|| ec.size(), 8) {
+            Some(size) => {
+                let _ = writeln!(stdout, "  Size: {} KB", size/1024);
+            },
+            None => {
+                let _ = writeln!(stderr(), "Failed to read EC size");
+                process::exit(1);
+            }
+        }
     }
+
+    let _ = stdout.flush();
 }

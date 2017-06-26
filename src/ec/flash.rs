@@ -1,4 +1,4 @@
-use std::io::{self, Error, ErrorKind, Result, Write};
+use std::io::{self, stderr, Error, ErrorKind, Result, Write};
 
 use super::Ec;
 
@@ -33,6 +33,27 @@ impl EcFlash {
             while inb(self.cmd_port) & 0x2 == 0x2 {}
             outb(self.data_port, data)
         }
+    }
+
+    fn flush(&mut self) {
+        unsafe {
+            while inb(self.cmd_port) & 0x1 == 0x1 {
+                let data = inb(self.data_port);
+                let _ = writeln!(stderr(), "Flush byte {:X}", data);
+            }
+        }
+    }
+
+    fn get_param(&mut self, param: u8) -> u8 {
+        self.cmd(0x80);
+        self.write(param);
+        self.read()
+    }
+
+    fn set_param(&mut self, param: u8, data: u8) {
+        self.cmd(0x81);
+        self.write(param);
+        self.write(data);
     }
 
     fn get_str(&mut self, index: u8) -> String {
@@ -86,18 +107,20 @@ impl EcFlash {
             }
         };
 
-        Ok(Self {
+        let ec = Self {
             data_port: data_port,
             cmd_port: cmd_port,
-        })
+        };
+
+        Ok(ec)
     }
 }
 
 impl Ec for EcFlash {
     fn size(&mut self) -> usize {
-        self.cmd(0x80);
-        self.write(0xE5);
-        if self.read() == 0x80 {
+        self.flush();
+
+        if self.get_param(0xE5) == 0x80 {
             128 * 1024
         } else {
             64 * 1024
@@ -105,10 +128,14 @@ impl Ec for EcFlash {
     }
 
     fn project(&mut self) -> String {
+        self.flush();
+
         self.get_str(0x92)
     }
 
     fn version(&mut self) -> String {
+        self.flush();
+
         let mut version = self.get_str(0x93);
         version.insert_str(0, "1.");
         version
