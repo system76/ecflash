@@ -1,4 +1,4 @@
-use std::io::{self, stderr, Error, ErrorKind, Result, Write};
+use std::io::{self, Error, ErrorKind, Result, Write};
 
 use super::Ec;
 
@@ -38,8 +38,7 @@ impl EcFlash {
     fn flush(&mut self) {
         unsafe {
             while inb(self.cmd_port) & 0x1 == 0x1 {
-                let data = inb(self.data_port);
-                let _ = writeln!(stderr(), "Flush byte {:X}", data);
+                inb(self.data_port);
             }
         }
     }

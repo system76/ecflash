@@ -1,10 +1,10 @@
+extern crate ecflash;
+
 use std::{env, process};
 use std::fmt::Display;
 use std::io::{stdout, stderr, BufWriter, Write};
 
-use ec::{Ec, EcFile, EcFlash};
-
-mod ec;
+use ecflash::{Ec, EcFile, EcFlash};
 
 fn validate<T: PartialEq + Display, F: FnMut() -> T>(mut f: F, attempts: usize) -> Option<T> {
     for _attempt_i in 0..attempts {
