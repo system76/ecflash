@@ -2,7 +2,8 @@ extern crate ecflash;
 
 use std::{env, process};
 use std::fmt::Display;
-use std::io::{stdout, stderr, BufWriter, Write};
+use std::fs::File;
+use std::io::{stdout, stderr, BufWriter, Error, Read, Write};
 
 use ecflash::{Ec, EcFile, EcFlash};
 
@@ -20,6 +21,18 @@ fn validate<T: PartialEq + Display, F: FnMut() -> T>(mut f: F, attempts: usize) 
 }
 
 fn main() {
+    extern {
+        fn iopl(level: isize) -> isize;
+    }
+
+    // Get I/O Permission
+    unsafe {
+        if iopl(3) < 0 {
+            let _ = writeln!(stderr(), "Failed to get I/O permission: {}", Error::last_os_error());
+            process::exit(1);
+        }
+    }
+
     let mut ecs: Vec<(String, Box<Ec>)> = Vec::new();
 
     for arg in env::args().skip(1) {
@@ -60,9 +73,16 @@ fn main() {
                     process::exit(1);
                 }
             },
-            _ => match EcFile::new(&arg) {
-                Ok(ec_file) => {
-                    ecs.push((arg, Box::new(ec_file)));
+            _ => match File::open(&arg) {
+                Ok(mut ec_file) => {
+                    let mut data = Vec::new();
+                    match ec_file.read_to_end(&mut data) {
+                        Ok(_) => ecs.push((arg, Box::new(EcFile::new(data)))),
+                        Err(err) => {
+                            let _ = writeln!(stderr(), "Failed to read EC file '{}': {}", arg, err);
+                            process::exit(1);
+                        }
+                    }
                 },
                 Err(err) => {
                     let _ = writeln!(stderr(), "Failed to open EC file '{}': {}", arg, err);

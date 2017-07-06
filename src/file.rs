@@ -1,6 +1,4 @@
-use std::fs::File;
-use std::io::{Result, Read};
-use std::path::Path;
+use alloc::{String, Vec};
 
 use super::Ec;
 
@@ -29,13 +27,8 @@ impl EcFile {
         string
     }
 
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut file = File::open(path)?;
-
-        let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
-
-        Ok(EcFile(data))
+    pub fn new(data: Vec<u8>) -> Self {
+        EcFile(data)
     }
 }
 
@@ -54,9 +47,5 @@ impl Ec for EcFile {
             version.remove(0);
         }
         version
-    }
-
-    unsafe fn dump(&mut self) -> Vec<u8> {
-        self.0.clone()
     }
 }

@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 
 [dependencies]
-libc = "0.2.21"
 x86 = "0.7"
 
 [profile.release]

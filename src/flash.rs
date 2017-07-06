@@ -1,11 +1,9 @@
-use std::io::{self, Error, ErrorKind, Result, Write};
+use alloc::{String, Vec};
 
 use super::Ec;
 
-extern crate libc;
 extern crate x86;
 
-use self::libc::c_int;
 use self::x86::io::{inb, outb};
 
 pub struct EcFlash {
@@ -71,18 +69,7 @@ impl EcFlash {
         string
     }
 
-    pub fn new(number: u8) -> Result<Self> {
-        extern {
-            fn iopl(level: c_int) -> c_int;
-        }
-
-        // Get I/O Permission
-        unsafe {
-            if iopl(3) < 0 {
-                return Err(Error::last_os_error());
-            }
-        }
-
+    pub fn new(number: u8) -> Result<Self, String> {
         // Probe for Super I/O chip
         let id = unsafe {
             outb(0x2e, 0x20);
@@ -93,7 +80,7 @@ impl EcFlash {
         };
 
         if id != 0x8587 {
-            return Err(Error::new(ErrorKind::NotFound, format!("Unknown EC ID: {:>04X}", id)));
+            return Err(format!("Unknown EC ID: {:>04X}", id));
         }
 
         let (data_port, cmd_port) = match number {
@@ -102,7 +89,7 @@ impl EcFlash {
             2 => (0x68, 0x6c),
             3 => (0x6a, 0x6e),
             _ => {
-                return Err(Error::new(ErrorKind::NotFound, format!("Unknown EC number: {}", number)));
+                return Err(format!("Unknown EC number: {}", number));
             }
         };
 
@@ -138,44 +125,5 @@ impl Ec for EcFlash {
         let mut version = self.get_str(0x93);
         version.insert_str(0, "1.");
         version
-    }
-
-    unsafe fn dump(&mut self) -> Vec<u8> {
-        // This is really, really dangerous to run from userspace right now!
-        // The procedure needs to be improved!
-        // Lockups have happened requiring battery removal or burnout to fix!
-
-        let mut stderr = io::stderr();
-
-        let size = self.size();
-
-        let mut data = Vec::with_capacity(size);
-
-        self.cmd(0xde);
-        self.cmd(0xdc);
-
-        let _ = writeln!(stderr, "Reading from ROM");
-
-        for i in 0..size/65536 {
-            self.cmd(0x03);
-            self.cmd(i as u8);
-
-            let _ = writeln!(stderr, "Block {}", i);
-
-            for j in 0..0x100 {
-                for _i in 0..0x100 {
-                    data.push(self.read());
-                }
-                let _ = write!(stderr, "\r{}/{}", j + 1, 0x100);
-            }
-
-            let _ = writeln!(stderr, "");
-        }
-
-        self.cmd(0xfe);
-
-        let _ = writeln!(stderr, "Read complete");
-
-        data
     }
 }
