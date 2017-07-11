@@ -7,17 +7,17 @@ use std::io::{stdout, stderr, BufWriter, Error, Read, Write};
 
 use ecflash::{Ec, EcFile, EcFlash};
 
-fn validate<T: PartialEq + Display, F: FnMut() -> T>(mut f: F, attempts: usize) -> Option<T> {
+fn validate<T: PartialEq + Display, F: FnMut() -> T>(mut f: F, attempts: usize) -> Result<T, ()> {
     for _attempt_i in 0..attempts {
         let a = f();
         let b = f();
         if a == b {
-            return Some(a);
+            return Ok(a);
         } else {
             let _ = writeln!(stderr(), "Attempt {}: {} != {}", _attempt_i, a, b);
         }
     }
-    None
+    Err(())
 }
 
 fn main() {
@@ -37,16 +37,7 @@ fn main() {
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
-            "-0" => match EcFlash::new(0) {
-                Ok(ec_flash) => {
-                    ecs.push((String::new(), Box::new(ec_flash)));
-                },
-                Err(err) => {
-                    let _ = writeln!(stderr(), "Failed to open EC flash 0: {}", err);
-                    process::exit(1);
-                }
-            },
-            "-1" => match EcFlash::new(1) {
+            "-1" => match EcFlash::new(true) {
                 Ok(ec_flash) => {
                     ecs.push((String::new(), Box::new(ec_flash)));
                 },
@@ -55,21 +46,12 @@ fn main() {
                     process::exit(1);
                 }
             },
-            "-2" => match EcFlash::new(2) {
+            "-2" => match EcFlash::new(false) {
                 Ok(ec_flash) => {
                     ecs.push((String::new(), Box::new(ec_flash)));
                 },
                 Err(err) => {
                     let _ = writeln!(stderr(), "Failed to open EC flash 2: {}", err);
-                    process::exit(1);
-                }
-            },
-            "-3" => match EcFlash::new(3) {
-                Ok(ec_flash) => {
-                    ecs.push((String::new(), Box::new(ec_flash)));
-                },
-                Err(err) => {
-                    let _ = writeln!(stderr(), "Failed to open EC flash 3: {}", err);
                     process::exit(1);
                 }
             },
@@ -102,30 +84,30 @@ fn main() {
         }
 
         match validate(|| ec.project(), 8) {
-            Some(project) => {
+            Ok(project) => {
                 let _ = writeln!(stdout, "  Project: {}", project);
             },
-            None => {
+            Err(()) => {
                 let _ = writeln!(stderr(), "Failed to read EC project");
                 process::exit(1);
             }
         }
 
         match validate(|| ec.version(), 8) {
-            Some(version) => {
+            Ok(version) => {
                 let _ = writeln!(stdout, "  Version: {}", version);
             },
-            None => {
+            Err(()) => {
                 let _ = writeln!(stderr(), "Failed to read EC version");
                 process::exit(1);
             }
         }
 
         match validate(|| ec.size(), 8) {
-            Some(size) => {
+            Ok(size) => {
                 let _ = writeln!(stdout, "  Size: {} KB", size/1024);
             },
-            None => {
+            Err(()) => {
                 let _ = writeln!(stderr(), "Failed to read EC size");
                 process::exit(1);
             }

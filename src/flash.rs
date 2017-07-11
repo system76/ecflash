@@ -1,4 +1,4 @@
-use alloc::{String, Vec};
+use alloc::String;
 
 use super::Ec;
 
@@ -6,59 +6,94 @@ extern crate x86;
 
 use self::x86::io::{inb, outb};
 
+const TIMEOUT: usize = 100000;
+
 pub struct EcFlash {
+    primary: bool,
     data_port: u16,
     cmd_port: u16
 }
 
 impl EcFlash {
-    fn cmd(&mut self, data: u8) {
+    fn cmd(&mut self, data: u8) -> Result<(), ()> {
         unsafe {
-            while inb(self.cmd_port) & 0x2 == 0x2 {}
-            outb(self.cmd_port, data)
-        }
-    }
+            let mut i = TIMEOUT;
+            while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
+                i -= 1;
+            }
 
-    fn read(&mut self) -> u8 {
-        unsafe {
-            while inb(self.cmd_port) & 0x1 == 0 {}
-            inb(self.data_port)
-        }
-    }
-
-    fn write(&mut self, data: u8) {
-        unsafe {
-            while inb(self.cmd_port) & 0x2 == 0x2 {}
-            outb(self.data_port, data)
-        }
-    }
-
-    fn flush(&mut self) {
-        unsafe {
-            while inb(self.cmd_port) & 0x1 == 0x1 {
-                inb(self.data_port);
+            if i == 0 {
+                Err(())
+            } else {
+                Ok(outb(self.cmd_port, data))
             }
         }
     }
 
-    fn get_param(&mut self, param: u8) -> u8 {
-        self.cmd(0x80);
-        self.write(param);
+    fn read(&mut self) -> Result<u8, ()> {
+        unsafe {
+            let mut i = TIMEOUT;
+            while inb(self.cmd_port) & 0x1 == 0  && i > 0 {
+                i -= 1;
+            }
+
+            if i == 0 {
+                Err(())
+            } else {
+                Ok(inb(self.data_port))
+            }
+        }
+    }
+
+    fn write(&mut self, data: u8) -> Result<(), ()> {
+        unsafe {
+            let mut i = TIMEOUT;
+            while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
+                i -= 1;
+            }
+
+            if i == 0 {
+                Err(())
+            } else {
+                Ok(outb(self.data_port, data))
+            }
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), ()> {
+        unsafe {
+            let mut i = TIMEOUT;
+            while inb(self.cmd_port) & 0x1 == 0x1 && i > 0 {
+                inb(self.data_port);
+                i -= 1;
+            }
+
+            if i == 0 {
+                Err(())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn get_param(&mut self, param: u8) -> Result<u8, ()> {
+        self.cmd(0x80)?;
+        self.write(param)?;
         self.read()
     }
 
-    fn set_param(&mut self, param: u8, data: u8) {
-        self.cmd(0x81);
-        self.write(param);
-        self.write(data);
+    fn set_param(&mut self, param: u8, data: u8) -> Result<(), ()> {
+        self.cmd(0x81)?;
+        self.write(param)?;
+        self.write(data)
     }
 
-    fn get_str(&mut self, index: u8) -> String {
+    fn get_str(&mut self, index: u8) -> Result<String, ()> {
         let mut string = String::new();
 
-        self.cmd(index);
-        for _i in 0..256 {
-            let byte = self.read();
+        self.cmd(index)?;
+        for _i in 0..16 {
+            let byte = self.read()?;
             if byte == b'$' {
                 break;
             } else {
@@ -66,10 +101,10 @@ impl EcFlash {
             }
         }
 
-        string
+        Ok(string)
     }
 
-    pub fn new(number: u8) -> Result<Self, String> {
+    pub fn new(primary: bool) -> Result<Self, String> {
         // Probe for Super I/O chip
         let id = unsafe {
             outb(0x2e, 0x20);
@@ -83,17 +118,14 @@ impl EcFlash {
             return Err(format!("Unknown EC ID: {:>04X}", id));
         }
 
-        let (data_port, cmd_port) = match number {
-            0 => (0x60, 0x64),
-            1 => (0x62, 0x66),
-            2 => (0x68, 0x6c),
-            3 => (0x6a, 0x6e),
-            _ => {
-                return Err(format!("Unknown EC number: {}", number));
-            }
+        let (data_port, cmd_port) = if primary {
+            (0x62, 0x66)
+        } else {
+            (0x68, 0x6c)
         };
 
         let ec = Self {
+            primary: primary,
             data_port: data_port,
             cmd_port: cmd_port,
         };
@@ -104,9 +136,9 @@ impl EcFlash {
 
 impl Ec for EcFlash {
     fn size(&mut self) -> usize {
-        self.flush();
+        let _ = self.flush();
 
-        if self.get_param(0xE5) == 0x80 {
+        if self.primary && self.get_param(0xE5) == Ok(0x80) {
             128 * 1024
         } else {
             64 * 1024
@@ -114,15 +146,15 @@ impl Ec for EcFlash {
     }
 
     fn project(&mut self) -> String {
-        self.flush();
+        let _ = self.flush();
 
-        self.get_str(0x92)
+        self.get_str(0x92).unwrap_or(String::new())
     }
 
     fn version(&mut self) -> String {
-        self.flush();
+        let _ = self.flush();
 
-        let mut version = self.get_str(0x93);
+        let mut version = self.get_str(0x93).unwrap_or(String::new());
         version.insert_str(0, "1.");
         version
     }
