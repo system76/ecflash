@@ -1,10 +1,7 @@
 use alloc::String;
 
 use super::Ec;
-
-extern crate x86;
-
-use self::x86::io::{inb, outb};
+use super::io::{inb, outb};
 
 const TIMEOUT: usize = 100000;
 

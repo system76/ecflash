@@ -3,8 +3,5 @@ name = "ecflash"
 version = "0.1.0"
 authors = ["Jeremy Soller <jackpot51@gmail.com>"]
 
-[dependencies]
-x86 = "0.7"
-
 [profile.release]
 lto = true
