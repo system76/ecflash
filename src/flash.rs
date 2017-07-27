@@ -15,80 +15,72 @@ pub struct EcFlash {
 }
 
 impl EcFlash {
-    fn cmd(&mut self, data: u8) -> Result<(), ()> {
-        unsafe {
-            let mut i = TIMEOUT;
-            while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
-                i -= 1;
-            }
+    pub unsafe fn cmd(&mut self, data: u8) -> Result<(), ()> {
+        let mut i = TIMEOUT;
+        while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
+            i -= 1;
+        }
 
-            if i == 0 {
-                Err(())
-            } else {
-                Ok(outb(self.cmd_port, data))
-            }
+        if i == 0 {
+            Err(())
+        } else {
+            Ok(outb(self.cmd_port, data))
         }
     }
 
-    fn read(&mut self) -> Result<u8, ()> {
-        unsafe {
-            let mut i = TIMEOUT;
-            while inb(self.cmd_port) & 0x1 == 0  && i > 0 {
-                i -= 1;
-            }
+    pub unsafe fn read(&mut self) -> Result<u8, ()> {
+        let mut i = TIMEOUT;
+        while inb(self.cmd_port) & 0x1 == 0  && i > 0 {
+            i -= 1;
+        }
 
-            if i == 0 {
-                Err(())
-            } else {
-                Ok(inb(self.data_port))
-            }
+        if i == 0 {
+            Err(())
+        } else {
+            Ok(inb(self.data_port))
         }
     }
 
-    fn write(&mut self, data: u8) -> Result<(), ()> {
-        unsafe {
-            let mut i = TIMEOUT;
-            while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
-                i -= 1;
-            }
+    pub unsafe fn write(&mut self, data: u8) -> Result<(), ()> {
+        let mut i = TIMEOUT;
+        while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
+            i -= 1;
+        }
 
-            if i == 0 {
-                Err(())
-            } else {
-                Ok(outb(self.data_port, data))
-            }
+        if i == 0 {
+            Err(())
+        } else {
+            Ok(outb(self.data_port, data))
         }
     }
 
-    fn flush(&mut self) -> Result<(), ()> {
-        unsafe {
-            let mut i = TIMEOUT;
-            while inb(self.cmd_port) & 0x1 == 0x1 && i > 0 {
-                inb(self.data_port);
-                i -= 1;
-            }
+    pub unsafe fn flush(&mut self) -> Result<(), ()> {
+        let mut i = TIMEOUT;
+        while inb(self.cmd_port) & 0x1 == 0x1 && i > 0 {
+            inb(self.data_port);
+            i -= 1;
+        }
 
-            if i == 0 {
-                Err(())
-            } else {
-                Ok(())
-            }
+        if i == 0 {
+            Err(())
+        } else {
+            Ok(())
         }
     }
 
-    fn get_param(&mut self, param: u8) -> Result<u8, ()> {
+    pub unsafe fn get_param(&mut self, param: u8) -> Result<u8, ()> {
         self.cmd(0x80)?;
         self.write(param)?;
         self.read()
     }
 
-    fn set_param(&mut self, param: u8, data: u8) -> Result<(), ()> {
+    pub unsafe fn set_param(&mut self, param: u8, data: u8) -> Result<(), ()> {
         self.cmd(0x81)?;
         self.write(param)?;
         self.write(data)
     }
 
-    fn get_str(&mut self, index: u8) -> Result<String, ()> {
+    pub unsafe fn get_str(&mut self, index: u8) -> Result<String, ()> {
         let mut string = String::new();
 
         self.cmd(index)?;
@@ -136,9 +128,9 @@ impl EcFlash {
 
 impl Ec for EcFlash {
     fn size(&mut self) -> usize {
-        let _ = self.flush();
+        let _ = unsafe { self.flush() };
 
-        if self.primary && self.get_param(0xE5) == Ok(0x80) {
+        if self.primary && unsafe { self.get_param(0xE5) } == Ok(0x80) {
             128 * 1024
         } else {
             64 * 1024
@@ -146,15 +138,15 @@ impl Ec for EcFlash {
     }
 
     fn project(&mut self) -> String {
-        let _ = self.flush();
+        let _ = unsafe { self.flush() };
 
-        self.get_str(0x92).unwrap_or(String::new())
+        unsafe { self.get_str(0x92) }.unwrap_or(String::new())
     }
 
     fn version(&mut self) -> String {
-        let _ = self.flush();
+        let _ = unsafe { self.flush() };
 
-        let mut version = self.get_str(0x93).unwrap_or(String::new());
+        let mut version = unsafe { self.get_str(0x93) }.unwrap_or(String::new());
         version.insert_str(0, "1.");
         version
     }

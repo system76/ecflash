@@ -5,7 +5,7 @@ use super::Ec;
 pub struct EcFile(Vec<u8>);
 
 impl EcFile {
-    fn get_str(&mut self, key: &[u8]) -> String {
+    pub unsafe fn get_str(&mut self, key: &[u8]) -> String {
         let mut string = String::new();
 
         let mut i = 0;
@@ -38,11 +38,11 @@ impl Ec for EcFile {
     }
 
     fn project(&mut self) -> String {
-        self.get_str(b"PRJ:")
+        unsafe { self.get_str(b"PRJ:") }
     }
 
     fn version(&mut self) -> String {
-        let mut version = self.get_str(b"VER:");
+        let mut version = unsafe { self.get_str(b"VER:") };
         while version.chars().next() == Some(' ') {
             version.remove(0);
         }
