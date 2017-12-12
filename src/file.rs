@@ -11,16 +11,22 @@ impl EcFile {
         let mut i = 0;
         let mut bytes = self.0.iter();
         while let Some(&byte) = bytes.next() {
-            if i < key.len() {
-                if byte == key[i] {
-                    i += 1;
+            loop {
+                if i < key.len() {
+                    if byte == key[i] {
+                        i += 1;
+                        break;
+                    } else if i == 0 {
+                        break;
+                    } else {
+                        i = 0;
+                    }
+                } else if byte == b'$' {
+                    return string;
                 } else {
-                    i = 0;
+                    string.push(byte as char);
+                    break;
                 }
-            } else if byte == b'$' {
-                break;
-            } else {
-                string.push(byte as char);
             }
         }
 
