@@ -5,7 +5,7 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::String;
+use alloc::string::String;
 
 pub use self::file::EcFile;
 pub use self::flash::EcFlash;

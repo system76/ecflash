@@ -1,4 +1,4 @@
-use alloc::String;
+use alloc::string::String;
 
 use super::Ec;
 use super::io::{inb, outb};
