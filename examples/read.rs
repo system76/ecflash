@@ -4,7 +4,8 @@ use ecflash::{Ec, EcFlash};
 use std::{fs, io, process};
 
 pub struct Flasher{
-    ec: EcFlash
+    ec: EcFlash,
+    size: usize,
 }
 
 impl Flasher {
@@ -17,9 +18,9 @@ impl Flasher {
         self.ec.cmd(cmd)
     }
 
-    unsafe fn spi_write(&mut self, byte: u8) -> Result<(), ()> {
+    unsafe fn spi_write(&mut self, value: u8) -> Result<(), ()> {
         self.ec.cmd(3)?;
-        self.ec.cmd(byte)
+        self.ec.cmd(value)
     }
 
     unsafe fn spi_read(&mut self) -> Result<u8, ()> {
@@ -60,40 +61,48 @@ impl Flasher {
     }
 
     unsafe fn read(&mut self) -> Result<Vec<u8>, ()> {
-        let size = self.ec.size();
-        let mut buf = vec![0; size];
+        let mut buf = Vec::with_capacity(self.size);
 
-        self.spi_write_disable()?;
-        self.spi_wait()?;
+        for block in 0..self.size/65536 {
+            self.spi_write_disable()?;
+            self.spi_wait()?;
 
-        self.enter_follow_mode()?;
+            self.enter_follow_mode()?;
 
-        self.spi_cmd(11)?;
-        self.spi_write(0)?;
-        self.spi_write(0)?;
-        self.spi_write(0)?;
-        self.spi_write(0)?;
+            self.spi_cmd(11)?;
+            self.spi_write(block as u8)?;
+            self.spi_write((block >> 8) as u8)?;
+            self.spi_write((block >> 16) as u8)?;
+            self.spi_write((block >> 24) as u8)?;
 
-        for i in 0..buf.len() {
-            buf[i] = self.spi_read()?;
+            for _ in 0..64 {
+                for _ in 0..1024
+                 {
+                    buf.push(self.spi_read()?);
+                }
+                eprint!("\r{} KB", buf.len() / 1024);
+            }
+
+            self.spi_wait()?;
+
+            //TODO: May not be required
+            self.exit_follow_mode()?;
         }
 
-        self.spi_wait()?;
+        eprintln!("");
 
         Ok(buf)
     }
-}
 
-unsafe fn read() -> Result<(), &'static str> {
-    let mut flasher = Flasher {
-        ec: EcFlash::new(true).or(Err("Failed to find EC"))?
-    };
+    unsafe fn start(&mut self) -> Result<u8, ()> {
+        self.ec.cmd(0xDC)?;
+        self.ec.read()
+    }
 
-    let data = flasher.read().or(Err("Failed to read EC SPI"))?;
-
-    fs::write("dump.rom", data).or(Err("Failed to write dump.rom"))?;
-
-    Ok(())
+    unsafe fn stop(&mut self) -> Result<(), ()> {
+        self.ec.cmd(0x95)?;
+        self.ec.cmd(0xFC)
+    }
 }
 
 fn main() {
@@ -108,9 +117,23 @@ fn main() {
             process::exit(1);
         }
 
-        if let Err(err) = read() {
-            eprintln!("Failed to read EC data: {}", err);
-            process::exit(1);
+        let mut ec = EcFlash::new(true).expect("Failed to find EC");
+
+        let size = ec.size();
+
+        let mut flasher = Flasher {
+            ec: ec,
+            size: size,
+        };
+
+        if flasher.start() == Ok(51) {
+            if let Ok(data) = flasher.read() {
+                let _ = fs::write("dump.rom", data);
+            } else {
+                eprintln!("Failed to read");
+            }
+
+            flasher.stop();
         }
     }
 }
