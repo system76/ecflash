@@ -84,9 +84,6 @@ impl Flasher {
             }
 
             self.spi_wait()?;
-
-            //TODO: May not be required
-            self.exit_follow_mode()?;
         }
 
         eprintln!("");
