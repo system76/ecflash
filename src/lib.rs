@@ -9,9 +9,11 @@ use alloc::string::String;
 
 pub use self::file::EcFile;
 pub use self::flash::EcFlash;
+pub use self::flasher::Flasher;
 
 mod file;
 mod flash;
+mod flasher;
 mod io;
 
 pub trait Ec {
