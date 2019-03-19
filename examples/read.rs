@@ -9,6 +9,14 @@ pub struct Flasher{
 }
 
 impl Flasher {
+    fn new(mut ec: EcFlash) -> Self {
+        let size = ec.size();
+        Self {
+            ec,
+            size
+        }
+    }
+
     unsafe fn enter_follow_mode(&mut self) -> Result<(), ()> {
         self.ec.cmd(1)
     }
@@ -114,14 +122,9 @@ fn main() {
             process::exit(1);
         }
 
-        let mut ec = EcFlash::new(true).expect("Failed to find EC");
+        let ec = EcFlash::new(true).expect("Failed to find EC");
 
-        let size = ec.size();
-
-        let mut flasher = Flasher {
-            ec: ec,
-            size: size,
-        };
+        let mut flasher = Flasher::new(ec);
 
         if flasher.start() == Ok(51) {
             if let Ok(data) = flasher.read() {
