@@ -12,8 +12,12 @@ pub struct EcFlash {
 }
 
 impl EcFlash {
+    pub unsafe fn sts(&mut self) -> u8 {
+        inb(self.cmd_port)
+    }
+
     pub unsafe fn can_read(&mut self) -> bool {
-        inb(self.cmd_port) & 1 == 1
+        self.sts() & 1 == 1
     }
 
     pub unsafe fn wait_read(&mut self, mut timeout: usize) -> Result<(), ()> {
@@ -29,7 +33,7 @@ impl EcFlash {
     }
 
     pub unsafe fn can_write(&mut self) -> bool {
-        inb(self.cmd_port) & 2 == 0
+        self.sts() & 2 == 0
     }
 
     pub unsafe fn wait_write(&mut self, mut timeout: usize) -> Result<(), ()> {
