@@ -12,48 +12,41 @@ pub struct EcFlash {
 }
 
 impl EcFlash {
-    pub unsafe fn cmd(&mut self, data: u8) -> Result<(), ()> {
-        let mut i = TIMEOUT;
-        while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
-            i -= 1;
+    pub unsafe fn can_read(&mut self) -> bool {
+        inb(self.cmd_port) & 1 == 1
+    }
+
+    pub unsafe fn wait_read(&mut self, mut timeout: usize) -> Result<(), ()> {
+        while ! self.can_read() && timeout > 0 {
+            timeout -= 1;
         }
 
-        if i == 0 {
+        if timeout == 0 {
             Err(())
         } else {
-            Ok(outb(self.cmd_port, data))
+            Ok(())
         }
     }
 
-    pub unsafe fn read(&mut self) -> Result<u8, ()> {
-        let mut i = TIMEOUT;
-        while inb(self.cmd_port) & 0x1 == 0  && i > 0 {
-            i -= 1;
-        }
-
-        if i == 0 {
-            Err(())
-        } else {
-            Ok(inb(self.data_port))
-        }
+    pub unsafe fn can_write(&mut self) -> bool {
+        inb(self.cmd_port) & 2 == 0
     }
 
-    pub unsafe fn write(&mut self, data: u8) -> Result<(), ()> {
-        let mut i = TIMEOUT;
-        while inb(self.cmd_port) & 0x2 == 0x2 && i > 0 {
-            i -= 1;
+    pub unsafe fn wait_write(&mut self, mut timeout: usize) -> Result<(), ()> {
+        while ! self.can_write() && timeout > 0 {
+            timeout -= 1;
         }
 
-        if i == 0 {
+        if timeout == 0 {
             Err(())
         } else {
-            Ok(outb(self.data_port, data))
+            Ok(())
         }
     }
 
     pub unsafe fn flush(&mut self) -> Result<(), ()> {
         let mut i = TIMEOUT;
-        while inb(self.cmd_port) & 0x1 == 0x1 && i > 0 {
+        while self.can_read() && i > 0 {
             inb(self.data_port);
             i -= 1;
         }
@@ -63,6 +56,23 @@ impl EcFlash {
         } else {
             Ok(())
         }
+    }
+
+    pub unsafe fn cmd(&mut self, data: u8) -> Result<(), ()> {
+        self.wait_write(TIMEOUT)?;
+        outb(self.cmd_port, data);
+        self.wait_write(TIMEOUT)
+    }
+
+    pub unsafe fn read(&mut self) -> Result<u8, ()> {
+        self.wait_read(TIMEOUT)?;
+        Ok(inb(self.data_port))
+    }
+
+    pub unsafe fn write(&mut self, data: u8) -> Result<(), ()> {
+        self.wait_write(TIMEOUT)?;
+        outb(self.data_port, data);
+        self.wait_write(TIMEOUT)
     }
 
     pub unsafe fn get_param(&mut self, param: u8) -> Result<u8, ()> {
