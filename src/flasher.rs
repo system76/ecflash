@@ -12,7 +12,7 @@ impl Flasher {
         let size = ec.size();
         Self {
             ec,
-            size
+            size,
         }
     }
 

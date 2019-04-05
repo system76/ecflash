@@ -17,6 +17,8 @@ fn main() {
 
         let ec = EcFlash::new(true).expect("Failed to find EC");
 
+        let data = fs::read("flash.rom").expect("Failed to open flash.rom");
+
         let mut flasher = Flasher::new(ec);
 
         if flasher.start() == Ok(51) {
@@ -33,7 +35,7 @@ fn main() {
 
                         let _ = fs::write("erased.rom", &erased);
 
-                        if flasher.write(&original, |x| eprint!("\rWrite {} KB", x / 1024)).is_ok() {
+                        if flasher.write(&data, |x| eprint!("\rWrite {} KB", x / 1024)).is_ok() {
                             eprintln!("");
 
                             if let Ok(written) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
