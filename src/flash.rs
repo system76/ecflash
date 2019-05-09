@@ -117,8 +117,8 @@ impl EcFlash {
             ((a as u16) << 8) | (b as u16)
         };
 
-        if id != 0x8587 {
-            return Err(format!("Unknown EC ID: {:>04X}", id));
+        if id != 0x8587 && id != 0x5570 {
+            return Err(format!("Unknown EC ID: 0x{:>04X}", id));
         }
 
         let (data_port, cmd_port) = if primary {

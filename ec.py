@@ -11,8 +11,8 @@ class Ec:
         self.cmd_port = 0x66
 
         chip_id = self.id()
-        if chip_id != 0x8587:
-            raise Exception("EC: Unknown ID: {:04X}".format(chip_id))
+        if chip_id != 0x8587 and chip_id != 0x5570:
+            raise Exception("EC: Unknown ID: 0x{:04X}".format(chip_id))
 
     def close(self):
         os.close(self.fd)

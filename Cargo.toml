@@ -1,6 +1,6 @@
 [package]
 name = "system76_ecflash"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 description = "Flashing and querying with System76 Embedded Controllers"
 license = "LGPL-2.1-or-later"
