@@ -116,16 +116,6 @@ impl Flasher {
 
                 callback(index + 1024);
             }
-
-            //TODO: Determine if sector erase is needed
-            self.spi_write_enable()?;
-            self.enter_follow_mode()?;
-            self.spi_cmd(0xD8)?;
-            self.spi_write(sector as u8)?;
-            self.spi_write(0)?;
-            self.spi_write(0)?;
-            self.exit_follow_mode()?;
-            self.spi_wait()?;
         }
 
         Ok(())
@@ -134,22 +124,21 @@ impl Flasher {
     pub unsafe fn write<F: Fn(usize)>(&mut self, buf: &[u8], callback: F) -> Result<(), ()> {
         for sector in 0..self.size/65536 {
             self.spi_write_enable()?;
-            self.enter_follow_mode()?;
-            self.spi_cmd(0xAD)?;
-            self.spi_write(sector as u8)?;
-            self.spi_write((sector >> 8) as u8)?;
-            self.spi_write((sector >> 16) as u8)?;
 
             for block in 0..64 {
                 let index = sector * 65536 + block * 1024;
 
                 for word in 0..512 {
-                    self.spi_write(buf.get(index + word * 2).map_or(0xFF, |x| *x))?;
-                    self.spi_write(buf.get(index + word * 2 + 1).map_or(0xFF, |x| *x))?;
-
-                    self.spi_wait()?;
                     self.enter_follow_mode()?;
                     self.spi_cmd(0xAD)?;
+                    if block == 0 && word == 0 {
+                        self.spi_write(sector as u8)?;
+                        self.spi_write((sector >> 8) as u8)?;
+                        self.spi_write((sector >> 16) as u8)?;
+                    }
+                    self.spi_write(buf.get(index + word * 2).map_or(0xFF, |x| *x))?;
+                    self.spi_write(buf.get(index + word * 2 + 1).map_or(0xFF, |x| *x))?;
+                    self.spi_wait()?;
                 }
 
                 callback(index + 1024);
