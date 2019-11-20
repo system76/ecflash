@@ -35,6 +35,17 @@ fn main() {
 
                         let _ = fs::write("erased.rom", &erased);
 
+                        //TODO: retry erase on fail
+                        for i in 0..erased.len() {
+                            if erased[i] != 0xFF {
+                                println!(
+                                    "0x{:X}: 0x{:02X} != 0xFF",
+                                    i,
+                                    erased[i]
+                                );
+                            }
+                        }
+
                         if flasher.write(&data, |x| eprint!("\rWrite {} KB", x / 1024)).is_ok() {
                             eprintln!("");
 
@@ -42,6 +53,25 @@ fn main() {
                                 eprintln!("");
 
                                 let _ = fs::write("written.rom", &written);
+
+                                success = true;
+                                for i in 0..written.len() {
+                                    if written[i] != data[i] {
+                                        println!(
+                                            "0x{:X}: 0x{:02X} != 0x{:02X}",
+                                            i,
+                                            written[i],
+                                            data[i]
+                                        );
+                                        success = false;
+                                    }
+                                }
+
+                                if success {
+                                    eprintln!("Successfully flashed EC");
+                                } else {
+                                    eprintln!("Failed to flash EC");
+                                }
                             } else {
                                 eprintln!("Failed to read written data");
                             }
