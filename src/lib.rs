@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(alloc)]
 #![feature(asm)]
 
 #[macro_use]

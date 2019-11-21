@@ -1,12 +1,25 @@
 extern crate ecflash;
 
 use ecflash::{EcFlash, Flasher};
-use std::{fs, io, process};
+use std::{env, fs, io, process, thread, time};
 
 fn main() {
     extern {
         fn iopl(level: isize) -> isize;
     }
+
+    let path = env::args().nth(1).expect("no path argument");
+
+    let mut data = fs::read(path).expect("Failed to open rom");
+
+    // Wait for any key releases
+    eprintln!("Waiting for all keys to be released");
+    thread::sleep(time::Duration::new(1, 0));
+
+    eprintln!("Sync");
+    process::Command::new("sync")
+        .status()
+        .expect("failed to run sync");
 
     // Get I/O Permission
     unsafe {
@@ -17,23 +30,23 @@ fn main() {
 
         let ec = EcFlash::new(true).expect("Failed to find EC");
 
-        let data = fs::read("flash.rom").expect("Failed to open flash.rom");
-
         let mut flasher = Flasher::new(ec);
 
-        if flasher.start() == Ok(51) {
-            if let Ok(original) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
-                eprintln!("");
+        while data.len() < flasher.size {
+            data.push(0xFF);
+        }
 
-                let _ = fs::write("original.rom", &original);
+        if flasher.start() == Ok(51) {
+            let mut success = false;
+
+            if let Ok(_original) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
+                eprintln!("");
 
                 if flasher.erase(|x| eprint!("\rErase: {} KB", x / 1024)).is_ok() {
                     eprintln!("");
 
                     if let Ok(erased) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
                         eprintln!("");
-
-                        let _ = fs::write("erased.rom", &erased);
 
                         //TODO: retry erase on fail
                         for i in 0..erased.len() {
@@ -52,8 +65,6 @@ fn main() {
                             if let Ok(written) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
                                 eprintln!("");
 
-                                let _ = fs::write("written.rom", &written);
-
                                 success = true;
                                 for i in 0..written.len() {
                                     if written[i] != data[i] {
@@ -65,12 +76,6 @@ fn main() {
                                         );
                                         success = false;
                                     }
-                                }
-
-                                if success {
-                                    eprintln!("Successfully flashed EC");
-                                } else {
-                                    eprintln!("Failed to flash EC");
                                 }
                             } else {
                                 eprintln!("Failed to read written data");
@@ -88,7 +93,24 @@ fn main() {
                 eprintln!("Failed to read original data");
             }
 
-            flasher.stop();
+            eprintln!("Sync");
+            process::Command::new("sync")
+                .status()
+                .expect("failed to run sync");
+
+            // Will currently power off system
+            let _ = flasher.stop();
+
+            if success {
+                eprintln!("Successfully flashed EC");
+
+                // Shut down
+                process::Command::new("shutdown")
+                    .status()
+                    .expect("failed to run shutdown");
+            } else {
+                eprintln!("Failed to flash EC");
+            }
         } else {
             eprintln!("Failed to start flasher");
         }

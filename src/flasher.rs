@@ -4,7 +4,7 @@ use super::{Ec, EcFlash};
 
 pub struct Flasher {
     ec: EcFlash,
-    size: usize,
+    pub size: usize,
 }
 
 impl Flasher {
