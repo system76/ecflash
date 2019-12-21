@@ -49,10 +49,7 @@ impl Ec for EcFile {
     }
 
     fn version(&mut self) -> String {
-        let mut version = unsafe { self.get_str(b"VER:") };
-        while version.chars().next() == Some(' ') {
-            version.remove(0);
-        }
-        version
+        let version = unsafe { self.get_str(b"VER:") };
+        version.trim_left_matches(' ')
     }
 }
