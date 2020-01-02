@@ -9,3 +9,7 @@ repository = "https://github.com/system76/ecflash"
 
 [lib]
 name = "ecflash"
+
+[dev-dependencies]
+serialport = "3.3"
+
