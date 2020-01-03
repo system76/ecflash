@@ -119,7 +119,6 @@ impl<'a, T: Debugger> SpiFollow<'a, T> {
 
 impl<'a, T: Debugger> Drop for SpiFollow<'a, T> {
     fn drop(&mut self) {
-        println!("Drop");
         let _ = self.reset();
     }
 }
@@ -152,29 +151,13 @@ impl ParallelArduino {
         Ok(port)
     }
 
-    fn ack(&mut self) -> Result<()> {
-        println!("ACK");
-        let mut b = [0];
-        self.tty.read_exact(&mut b)?;
-        if b[0] == b'\r' {
-            Ok(())
-        } else {
-            Err(Error::new(
-                ErrorKind::InvalidInput,
-                format!("received ack of {:02X} instead of {:02X}", b[0], b'K')
-            ))
-        }
-    }
-
     fn echo(&mut self) -> Result<()> {
-        println!("E,0,0,76");
         self.tty.write_all(&[
             b'E',
             0,
-            0,
             0x76,
         ])?;
-        println!("Echo");
+
         let mut b = [0];
         self.tty.read_exact(&mut b)?;
         if b[0] != 0x76 {
@@ -183,78 +166,74 @@ impl ParallelArduino {
                 format!("received echo of {:02X} instead of {:02X}", b[0], 0x76)
             ));
         }
-        self.ack()?;
         Ok(())
     }
 
     fn update_buffer_size(&mut self) -> Result<()> {
-        println!("B,1,0");
         self.tty.write_all(&[
             b'B',
-            1,
             0,
         ])?;
-        let mut b = [0; 2];
+
+        let mut b = [0; 1];
         self.tty.read_exact(&mut b)?;
         // Size is recieved data + 1
-        self.buffer_size = (
-            (b[0] as usize) |
-            ((b[1] as usize) << 8)
-        ) + 1;
-        self.ack()?;
-        println!("Buffer size: {}", self.buffer_size);
+        self.buffer_size = (b[0] as usize) + 1;
+
+        eprintln!("Buffer size: {}", self.buffer_size);
         Ok(())
     }
 }
 
 impl Debugger for ParallelArduino {
     fn address(&mut self, address: u8) -> Result<()> {
-        println!("A,0,{:X}", address);
         self.tty.write_all(&[
             b'A',
-            0,
-            0,
             address,
         ])?;
-        self.ack()?;
+
         Ok(())
     }
 
     fn read(&mut self, data: &mut [u8]) -> Result<usize> {
         for chunk in data.chunks_mut(self.buffer_size) {
-            let length = chunk.len().checked_sub(1).unwrap();
-            println!("R,{:X}", length);
+            let param = (chunk.len() - 1) as u8;
             self.tty.write_all(&[
                 b'R',
-                length as u8,
-                (length >> 8) as u8,
+                param,
             ])?;
-            println!("Read");
             self.tty.read_exact(chunk)?;
-            self.ack()?;
         }
+
         Ok(data.len())
     }
 
     fn write(&mut self, data: &[u8]) -> Result<usize> {
         for chunk in data.chunks(self.buffer_size) {
-            let length = chunk.len().checked_sub(1).unwrap();
-            println!("W,{:X}", length);
+            let param = (chunk.len() - 1) as u8;
             self.tty.write_all(&[
                 b'W',
-                length as u8,
-                (length >> 8) as u8,
+                param,
             ])?;
-            println!("Write");
             self.tty.write_all(chunk)?;
-            self.ack()?;
+
+            let mut b = [0];
+            self.tty.read_exact(&mut b)?;
+            if b[0] != param {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("received ack of {:02X} instead of {:02X}", b[0], param)
+                ));
+            }
         }
+
         Ok(data.len())
     }
 }
 
 fn isp(file: &str) -> Result<()> {
     let rom_size = 128 * 1024;
+    let aai_accelerated = true;
 
     // Read firmware data
     let firmware = {
@@ -278,18 +257,18 @@ fn isp(file: &str) -> Result<()> {
     port.address(2)?;
     port.read(&mut id[2..3])?;
 
-    println!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
+    eprintln!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
 
     // Read entire ROM
     let mut rom = vec![0; rom_size];
     {
-        println!("SPI read");
+        eprintln!("SPI read");
         let mut spi = SpiFollow::new(&mut port, true)?;
         spi.write(&[0x0B, 0x00, 0x00, 0x00, 0x00])?;
         spi.read(&mut rom)?;
     }
 
-    println!("Saving ROM to backup.rom");
+    eprintln!("Saving ROM to backup.rom");
     fs::write("backup.rom", &rom)?;
 
     let mut matches = true;
@@ -301,20 +280,20 @@ fn isp(file: &str) -> Result<()> {
     }
 
     if matches {
-        println!("ROM matches specified firmware");
-        return;
+        eprintln!("ROM matches specified firmware");
+        return Ok(());
     }
 
     //TODO: Set write disable on error
     // Chip erase
     {
         // Write enable
-        println!("SPI write enable");
+        eprintln!("SPI write enable");
         let mut spi = SpiFollow::new(&mut port, true)?;
         spi.write(&[0x06])?;
 
         // Poll status for busy and write enable flags
-        println!("SPI write enable wait");
+        eprintln!("SPI write enable wait");
         loop {
             let mut status = [0];
             spi.reset()?;
@@ -327,12 +306,12 @@ fn isp(file: &str) -> Result<()> {
         }
 
         // Chip erase
-        println!("SPI chip erase");
+        eprintln!("SPI chip erase");
         spi.reset()?;
         spi.write(&[0x60])?;
-        
+
         // Poll status for busy flag
-        println!("SPI busy wait");
+        eprintln!("SPI busy wait");
         loop {
             let mut status = [0];
             spi.reset()?;
@@ -345,12 +324,12 @@ fn isp(file: &str) -> Result<()> {
         }
 
         // Write disable
-        println!("SPI write disable");
+        eprintln!("SPI write disable");
         spi.reset()?;
         spi.write(&[0x04])?;
 
         // Poll status for busy and write enable flags
-        println!("SPI write disable wait");
+        eprintln!("SPI write disable wait");
         loop {
             let mut status = [0];
             spi.reset()?;
@@ -363,7 +342,7 @@ fn isp(file: &str) -> Result<()> {
         }
 
         // Read entire ROM
-        println!("SPI read");
+        eprintln!("SPI read");
         spi.reset()?;
         spi.write(&[0x0B, 0x00, 0x00, 0x00, 0x00])?;
         spi.read(&mut rom)?;
@@ -378,17 +357,17 @@ fn isp(file: &str) -> Result<()> {
             ));
         }
     }
-    
+
     //TODO: Set write disable on error
     // Program
     {
         // Write enable
-        println!("SPI write enable");
+        eprintln!("SPI write enable");
         let mut spi = SpiFollow::new(&mut port, true)?;
         spi.write(&[0x06])?;
 
         // Poll status for busy and write enable flags
-        println!("SPI write enable wait");
+        eprintln!("SPI write enable wait");
         loop {
             let mut status = [0];
             spi.reset()?;
@@ -401,39 +380,63 @@ fn isp(file: &str) -> Result<()> {
         }
 
         // Auto address increment word program
-        println!("SPI AAI word program");
-        for (i, word) in firmware.chunks_exact(2).enumerate() {
-            println!("  program {} / {}", i * 2, firmware.len());
-            spi.reset()?;
-            if i == 0 {
-                // Write address on first cycle
-                spi.write(&[0xAD, 0, 0, 0, word[0], word[1]])?;
-            } else {
-                spi.write(&[0xAD, word[0], word[1]])?;
-            }
+        if aai_accelerated {
+            eprintln!("SPI AAI word program (accelerated)");
+            for (i, chunk) in firmware.chunks(spi.port.buffer_size).enumerate() {
+                eprint!("  program {} / {}\r", i * spi.port.buffer_size, firmware.len());
 
-            // Poll status for busy flag
-            println!("SPI busy wait");
-            loop {
-                let mut status = [0];
-                spi.reset()?;
-                spi.write(&[0x05])?;
-                spi.read(&mut status)?;
+                let param = (chunk.len() - 1) as u8;
+                spi.port.tty.write_all(&[
+                    b'P',
+                    param
+                ])?;
+                spi.port.tty.write_all(chunk)?;
 
-                if status[0] & 1 == 0 {
-                    break;
+                let mut b = [0];
+                spi.port.tty.read_exact(&mut b)?;
+                if b[0] != param {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        format!("received ack of {:02X} instead of {:02X}", b[0], param)
+                    ));
                 }
             }
+            eprintln!("  program {} / {}", firmware.len(), firmware.len());
+        } else {
+            eprintln!("SPI AAI word program");
+            for (i, word) in firmware.chunks_exact(2).enumerate() {
+                eprint!("  program {} / {}\r", i * 2, firmware.len());
+                spi.reset()?;
+                if i == 0 {
+                    // Write address on first cycle
+                    spi.write(&[0xAD, 0, 0, 0, word[0], word[1]])?;
+                } else {
+                    spi.write(&[0xAD, word[0], word[1]])?;
+                }
+
+                // Poll status for busy flag
+                loop {
+                    let mut status = [0];
+                    spi.reset()?;
+                    spi.write(&[0x05])?;
+                    spi.read(&mut status)?;
+
+                    if status[0] & 1 == 0 {
+                        break;
+                    }
+                }
+            }
+            eprintln!("  program {} / {}", firmware.len(), firmware.len());
         }
-        
+
 
         // Write disable
-        println!("SPI write disable");
+        eprintln!("SPI write disable");
         spi.reset()?;
         spi.write(&[0x04])?;
 
         // Poll status for busy and write enable flags
-        println!("SPI write disable wait");
+        eprintln!("SPI write disable wait");
         loop {
             let mut status = [0];
             spi.reset()?;
@@ -446,7 +449,7 @@ fn isp(file: &str) -> Result<()> {
         }
 
         // Read entire ROM
-        println!("SPI read");
+        eprintln!("SPI read");
         spi.reset()?;
         spi.write(&[0x0B, 0x00, 0x00, 0x00, 0x00])?;
         spi.read(&mut rom)?;
@@ -461,6 +464,8 @@ fn isp(file: &str) -> Result<()> {
             ));
         }
     }
+
+    eprintln!("Successfully programmed SPI ROM");
 
     Ok(())
 }
