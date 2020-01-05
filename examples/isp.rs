@@ -72,12 +72,12 @@ pub trait Debugger {
     }
 }
 
-pub struct SpiFollow<'a, T: Debugger> {
+pub struct SpiBus<'a, T: Debugger> {
     port: &'a mut T,
     data: bool,
 }
 
-impl<'a, T: Debugger> SpiFollow<'a, T> {
+impl<'a, T: Debugger> SpiBus<'a, T> {
     pub fn new(port: &'a mut T, eflash: bool) -> Result<Self> {
         port.flash_address(
             if eflash { 0x7FFF_FE00 } else { 0xFFFF_FE00 },
@@ -117,9 +117,138 @@ impl<'a, T: Debugger> SpiFollow<'a, T> {
     }
 }
 
-impl<'a, T: Debugger> Drop for SpiFollow<'a, T> {
+impl<'a, T: Debugger> Drop for SpiBus<'a, T> {
     fn drop(&mut self) {
         let _ = self.reset();
+    }
+}
+
+struct SpiRom<'a, 't, T: Debugger> {
+    bus: &'a mut SpiBus<'t, T>,
+}
+
+impl<'a, 't, T: Debugger> SpiRom<'a, 't, T> {
+    pub fn new(bus: &'a mut SpiBus<'t, T>) -> Self {
+        Self { bus }
+    }
+
+    pub fn status(&mut self) -> Result<u8> {
+        let mut status = [0];
+
+        self.bus.reset()?;
+        self.bus.write(&[0x05])?;
+        self.bus.read(&mut status)?;
+
+        Ok(status[0])
+    }
+
+    pub fn write_disable(&mut self) -> Result<()> {
+        self.bus.reset()?;
+        self.bus.write(&[0x04])?;
+
+        // Poll status for busy and write enable flags
+        //TODO: timeout
+        while self.status()? & 3 != 0 {}
+
+        Ok(())
+    }
+
+    pub fn write_enable(&mut self) -> Result<()> {
+        self.bus.reset()?;
+        self.bus.write(&[0x06])?;
+
+        // Poll status for busy and write enable flags
+        //TODO: timeout
+        while self.status()? & 3 != 2 {}
+
+        Ok(())
+    }
+
+    pub fn erase(&mut self) -> Result<()> {
+        self.write_enable()?;
+
+        self.bus.reset()?;
+        self.bus.write(&[0x60])?;
+
+        // Poll status for busy flag
+        //TODO: timeout
+        while self.status()? & 1 != 0 {}
+
+        self.write_disable()?;
+
+        Ok(())
+    }
+
+    pub fn read_at(&mut self, address: u32, data: &mut [u8]) -> Result<usize> {
+        if (address & 0xFF00_0000) > 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("address {:X} exceeds 24 bits", address)
+            ));
+        }
+
+        self.bus.reset()?;
+        self.bus.write(&[
+            0x0B,
+            (address >> 16) as u8,
+            (address >> 8) as u8,
+            address as u8,
+            0,
+        ])?;
+        self.bus.read(data)
+    }
+
+    pub fn write_at(&mut self, address: u32, data: &[u8]) -> Result<usize> {
+        if (address & 0xFF00_0000) > 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("address {:X} exceeds 24 bits", address)
+            ));
+        }
+
+        //TODO: Support programming with any length
+        if (data.len() % 2) != 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("length {} is not a multiple of 2", data.len())
+            ));
+        }
+
+        self.write_enable()?;
+
+        for (i, word) in data.chunks_exact(2).enumerate() {
+            self.bus.reset()?;
+            if i == 0 {
+                self.bus.write(&[
+                    0xAD,
+                    (address >> 16) as u8,
+                    (address >> 8) as u8,
+                    address as u8,
+                    word[0],
+                    word[1]
+                ])?;
+            } else {
+                self.bus.write(&[
+                    0xAD,
+                    word[0],
+                    word[1]
+                ])?;
+            }
+
+            // Poll status for busy flag
+            //TODO: timeout
+            while self.status()? & 1 != 0 {}
+        }
+
+        self.write_disable()?;
+
+        Ok(data.len())
+    }
+}
+
+impl<'a, 't, T: Debugger> Drop for SpiRom<'a, 't, T> {
+    fn drop(&mut self) {
+        let _ = self.write_disable();
     }
 }
 
@@ -259,13 +388,14 @@ fn isp(file: &str) -> Result<()> {
 
     eprintln!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
 
-    // Read entire ROM
+    let mut spi_bus = SpiBus::new(&mut port, true)?;
+    let mut spi = SpiRom::new(&mut spi_bus);
+
     let mut rom = vec![0; rom_size];
     {
+        // Read entire ROM
         eprintln!("SPI read");
-        let mut spi = SpiFollow::new(&mut port, true)?;
-        spi.write(&[0x0B, 0x00, 0x00, 0x00, 0x00])?;
-        spi.read(&mut rom)?;
+        spi.read_at(0, &mut rom)?;
     }
 
     eprintln!("Saving ROM to backup.rom");
@@ -284,68 +414,14 @@ fn isp(file: &str) -> Result<()> {
         return Ok(());
     }
 
-    //TODO: Set write disable on error
-    // Chip erase
     {
-        // Write enable
-        eprintln!("SPI write enable");
-        let mut spi = SpiFollow::new(&mut port, true)?;
-        spi.write(&[0x06])?;
-
-        // Poll status for busy and write enable flags
-        eprintln!("SPI write enable wait");
-        loop {
-            let mut status = [0];
-            spi.reset()?;
-            spi.write(&[0x05])?;
-            spi.read(&mut status)?;
-
-            if status[0] & 3 == 2 {
-                break;
-            }
-        }
-
         // Chip erase
         eprintln!("SPI chip erase");
-        spi.reset()?;
-        spi.write(&[0x60])?;
-
-        // Poll status for busy flag
-        eprintln!("SPI busy wait");
-        loop {
-            let mut status = [0];
-            spi.reset()?;
-            spi.write(&[0x05])?;
-            spi.read(&mut status)?;
-
-            if status[0] & 1 == 0 {
-                break;
-            }
-        }
-
-        // Write disable
-        eprintln!("SPI write disable");
-        spi.reset()?;
-        spi.write(&[0x04])?;
-
-        // Poll status for busy and write enable flags
-        eprintln!("SPI write disable wait");
-        loop {
-            let mut status = [0];
-            spi.reset()?;
-            spi.write(&[0x05])?;
-            spi.read(&mut status)?;
-
-            if status[0] & 3 == 0 {
-                break;
-            }
-        }
+        spi.erase()?;
 
         // Read entire ROM
         eprintln!("SPI read");
-        spi.reset()?;
-        spi.write(&[0x0B, 0x00, 0x00, 0x00, 0x00])?;
-        spi.read(&mut rom)?;
+        spi.read_at(0, &mut rom)?;
     }
 
     // Verify chip erase
@@ -361,39 +437,23 @@ fn isp(file: &str) -> Result<()> {
     //TODO: Set write disable on error
     // Program
     {
-        // Write enable
-        eprintln!("SPI write enable");
-        let mut spi = SpiFollow::new(&mut port, true)?;
-        spi.write(&[0x06])?;
-
-        // Poll status for busy and write enable flags
-        eprintln!("SPI write enable wait");
-        loop {
-            let mut status = [0];
-            spi.reset()?;
-            spi.write(&[0x05])?;
-            spi.read(&mut status)?;
-
-            if status[0] & 3 == 2 {
-                break;
-            }
-        }
-
         // Auto address increment word program
         if aai_accelerated {
+            spi.write_enable()?;
+
             eprintln!("SPI AAI word program (accelerated)");
-            for (i, chunk) in firmware.chunks(spi.port.buffer_size).enumerate() {
-                eprint!("  program {} / {}\r", i * spi.port.buffer_size, firmware.len());
+            for (i, chunk) in firmware.chunks(spi.bus.port.buffer_size).enumerate() {
+                eprint!("  program {} / {}\r", i * spi.bus.port.buffer_size, firmware.len());
 
                 let param = (chunk.len() - 1) as u8;
-                spi.port.tty.write_all(&[
+                spi.bus.port.tty.write_all(&[
                     b'P',
                     param
                 ])?;
-                spi.port.tty.write_all(chunk)?;
+                spi.bus.port.tty.write_all(chunk)?;
 
                 let mut b = [0];
-                spi.port.tty.read_exact(&mut b)?;
+                spi.bus.port.tty.read_exact(&mut b)?;
                 if b[0] != param {
                     return Err(Error::new(
                         ErrorKind::InvalidInput,
@@ -402,57 +462,17 @@ fn isp(file: &str) -> Result<()> {
                 }
             }
             eprintln!("  program {} / {}", firmware.len(), firmware.len());
+
+            spi.write_disable()?;
         } else {
             eprintln!("SPI AAI word program");
-            for (i, word) in firmware.chunks_exact(2).enumerate() {
-                eprint!("  program {} / {}\r", i * 2, firmware.len());
-                spi.reset()?;
-                if i == 0 {
-                    // Write address on first cycle
-                    spi.write(&[0xAD, 0, 0, 0, word[0], word[1]])?;
-                } else {
-                    spi.write(&[0xAD, word[0], word[1]])?;
-                }
-
-                // Poll status for busy flag
-                loop {
-                    let mut status = [0];
-                    spi.reset()?;
-                    spi.write(&[0x05])?;
-                    spi.read(&mut status)?;
-
-                    if status[0] & 1 == 0 {
-                        break;
-                    }
-                }
-            }
-            eprintln!("  program {} / {}", firmware.len(), firmware.len());
+            spi.write_at(0, &firmware)?;
         }
 
-
-        // Write disable
-        eprintln!("SPI write disable");
-        spi.reset()?;
-        spi.write(&[0x04])?;
-
-        // Poll status for busy and write enable flags
-        eprintln!("SPI write disable wait");
-        loop {
-            let mut status = [0];
-            spi.reset()?;
-            spi.write(&[0x05])?;
-            spi.read(&mut status)?;
-
-            if status[0] & 3 == 0 {
-                break;
-            }
-        }
 
         // Read entire ROM
         eprintln!("SPI read");
-        spi.reset()?;
-        spi.write(&[0x0B, 0x00, 0x00, 0x00, 0x00])?;
-        spi.read(&mut rom)?;
+        spi.read_at(0, &mut rom)?;
     }
 
     // Verify program
