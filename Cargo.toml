@@ -11,5 +11,6 @@ repository = "https://github.com/system76/ecflash"
 name = "ecflash"
 
 [dev-dependencies]
+libc = "0.2"
+redox_hwio = "0.1"
 serialport = "3.3"
-

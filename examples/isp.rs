@@ -1,8 +1,8 @@
+use hwio::{Io, Pio};
 use serialport::{Error, ErrorKind, Result, SerialPortSettings, posix::TTYPort};
 use std::env;
 use std::fs;
-use std::io::Read;
-use std::io::Write;
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::time::Duration;
 use std::thread;
@@ -17,6 +17,9 @@ pub enum Address {
     INDAR2 = 6,
     INDAR3 = 7,
     INDDR = 8,
+    ECMSADDR0 = 0x2E,
+    ECMSADDR1 = 0x2F,
+    ECMSDATA = 0x30,
 }
 
 pub trait Debugger {
@@ -357,6 +360,59 @@ impl Debugger for ParallelArduino {
         }
 
         Ok(data.len())
+    }
+}
+
+pub struct I2EC {
+    address: Pio<u8>,
+    data: Pio<u8>,
+}
+
+impl I2EC {
+    pub fn new() -> Result<Self> {
+        //TODO: check EC ID using super i/o
+        if unsafe { libc::iopl(3) } != 0 {
+            return Err(Error::from(
+                io::Error::last_os_error()
+            ));
+        }
+
+        Ok(Self {
+            address: Pio::new(0x2E),
+            data: Pio::new(0x2F),
+        })
+    }
+
+    fn super_io_read(&mut self, reg: u8) -> u8 {
+        self.address.write(reg);
+        self.data.read()
+    }
+
+    fn super_io_write(&mut self, reg: u8, value: u8) {
+        self.address.write(reg);
+        self.data.write(value);
+    }
+
+    fn d2_read(&mut self, reg: u8) -> u8 {
+        self.super_io_write(0x2E, reg);
+        self.super_io_read(0x2F)
+    }
+
+    fn d2_write(&mut self, reg: u8, value: u8) {
+        self.super_io_write(0x2E, reg);
+        self.super_io_write(0x2F, value);
+    }
+
+    fn i2ec_read(&mut self, addr: u16) -> u8 {
+        self.d2_write(0x11, (addr >> 8) as u8);
+        self.d2_write(0x10, addr as u8);
+        self.d2_read(0x12)
+    }
+
+    fn i2ec_write(&mut self, addr: u16, value: u8) {
+        self.d2_write(0x11, (addr >> 8) as u8);
+        self.d2_write(0x10, addr as u8);
+        self.d2_write(0x12, value);
     }
 }
 
