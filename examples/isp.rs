@@ -197,7 +197,7 @@ impl<'a, 't, T: Debugger> SpiRom<'a, 't, T> {
         Ok(())
     }
 
-    pub fn erase(&mut self) -> Result<()> {
+    pub fn erase_chip(&mut self) -> Result<()> {
         self.write_enable()?;
 
         self.bus.reset()?;
@@ -210,6 +210,33 @@ impl<'a, 't, T: Debugger> SpiRom<'a, 't, T> {
         self.write_disable()?;
 
         Ok(())
+    }
+
+    pub fn erase_sector(&mut self, address: u32) -> Result<usize> {
+        if (address & 0xFF00_0000) > 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("address {:X} exceeds 24 bits", address)
+            ));
+        }
+
+        self.write_enable()?;
+
+        self.bus.reset()?;
+        self.bus.write(&[
+            0xD7,
+            (address >> 16) as u8,
+            (address >> 8) as u8,
+            address as u8,
+        ])?;
+
+        // Poll status for busy flag
+        //TODO: timeout
+        while self.status()? & 1 != 0 {}
+
+        self.write_disable()?;
+
+        Ok(1024)
     }
 
     pub fn read_at(&mut self, address: u32, data: &mut [u8]) -> Result<usize> {
@@ -503,7 +530,14 @@ fn isp(file: &str) -> Result<()> {
     {
         // Chip erase
         eprintln!("SPI chip erase");
-        spi.erase()?;
+        spi.erase_chip()?;
+
+        // Sector erase
+        let mut address = 0;
+        while address < rom_size {
+            eprintln!("SPI sector erase {:06X}", address);
+            address += spi.erase_sector(address as u32)?;
+        }
 
         // Read entire ROM
         eprintln!("SPI read");
