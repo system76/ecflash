@@ -42,6 +42,36 @@ pub trait Debugger {
         self.write(data)
     }
 
+    /// Set EC memory snoop address
+    fn ecms_address(&mut self, address: u16) -> Result<()> {
+        self.write_at(Address::ECMSADDR1, &[(address >> 8) as u8])?;
+        self.write_at(Address::ECMSADDR0, &[(address) as u8])?;
+
+        Ok(())
+    }
+
+    /// Read data from memory using EC-indirect mode
+    fn ecms_read(&mut self, data: &mut [u8]) -> Result<usize> {
+        self.read_at(Address::ECMSDATA, data)
+    }
+
+    /// Write data to memory using EC memory snoop
+    fn ecms_write(&mut self, data: &[u8]) -> Result<usize> {
+        self.write_at(Address::ECMSDATA, data)
+    }
+
+    /// Read data from memory at address using EC memory snoop
+    fn ecms_read_at(&mut self, address: u16, data: &mut [u8]) -> Result<usize> {
+        self.ecms_address(address)?;
+        self.ecms_read(data)
+    }
+
+    /// Write data to memory at address using EC memory snoop
+    fn ecms_write_at(&mut self, address: u16, data: &[u8]) -> Result<usize> {
+        self.ecms_address(address)?;
+        self.ecms_write(data)
+    }
+
     /// Set EC-indirect flash address
     fn flash_address(&mut self, address: u32) -> Result<()> {
         self.write_at(Address::INDAR3, &[(address >> 24) as u8])?;
