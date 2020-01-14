@@ -480,10 +480,17 @@ fn isp(file: &str) -> Result<()> {
     // Read firmware data
     let firmware = {
         let mut firmware = fs::read(file)?;
+
+        // Truncate 0xFF bytes
+        while firmware.last() == Some(&0xFF) {
+            firmware.pop();
+        }
+
         // Make sure firmware length is a multiple of word size
         while firmware.len() % 2 != 0 {
             firmware.push(0xFF);
         }
+
         firmware
     };
 
@@ -529,14 +536,27 @@ fn isp(file: &str) -> Result<()> {
 
     {
         // Chip erase
-        eprintln!("SPI chip erase");
-        spi.erase_chip()?;
+        // eprintln!("SPI chip erase");
+        // spi.erase_chip()?;
 
         // Sector erase
         let mut address = 0;
         while address < rom_size {
-            eprintln!("SPI sector erase {:06X}", address);
-            address += spi.erase_sector(address as u32)?;
+            let mut erased = true;
+            for &b in &rom[address..address + 1024] {
+                if b != 0xFF {
+                    erased =false;
+                    break;
+                }
+            }
+
+            if erased {
+                eprintln!("SPI sector already erased {:06X}", address);
+                address += 1024;
+            } else {
+                eprintln!("SPI sector erase {:06X}", address);
+                address += spi.erase_sector(address as u32)?;
+            }
         }
 
         // Read entire ROM
