@@ -679,6 +679,13 @@ fn isp(internal: bool, file: &str) -> Result<()> {
 
     if internal {
         unsafe {
+            // Wait for any key releases
+            eprintln!("Waiting 5 seconds for all keys to be released");
+            thread::sleep(time::Duration::new(5, 0));
+
+            eprintln!("Sync");
+            process::Command::new("sync").status();
+
             if libc::iopl(3) < 0 {
                 eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
                 process::exit(1);
