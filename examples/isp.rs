@@ -684,7 +684,7 @@ fn isp(internal: bool, file: &str) -> Result<()> {
             thread::sleep(Duration::new(5, 0));
 
             eprintln!("Sync");
-            process::Command::new("sync").status();
+            let _ = process::Command::new("sync").status();
 
             if libc::iopl(3) < 0 {
                 eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
