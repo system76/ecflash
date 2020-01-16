@@ -5,8 +5,11 @@ use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
+use std::process;
 use std::time::Duration;
 use std::thread;
+
+use ecflash::{EcFlash, Flasher};
 
 #[repr(u8)]
 pub enum Address {
@@ -675,7 +678,51 @@ fn isp(internal: bool, file: &str) -> Result<()> {
     };
 
     if internal {
-        isp_inner(I2EC::new()?, &firmware)
+        unsafe {
+            if libc::iopl(3) < 0 {
+                eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
+                process::exit(1);
+            }
+
+            //TODO: return error
+            let ec = EcFlash::new(true).expect("Failed to find EC");
+            let mut flasher = Flasher::new(ec);
+            if flasher.start() == Ok(51) {
+                let res = isp_inner(I2EC::new()?, &firmware);
+
+                eprintln!("Sync");
+                let _ = process::Command::new("sync").status();
+
+                eprintln!("System will shut off in 5 seconds");
+                thread::sleep(Duration::new(5, 0));
+
+                eprintln!("Sync");
+                let _ = process::Command::new("sync").status();
+
+                // Will currently power off system
+                let _ = flasher.stop();
+
+                match res {
+                    Ok(()) => {
+                        eprintln!("Successfully flashed EC");
+
+                        // Shut down
+                        process::Command::new("shutdown")
+                            .status()
+                            .expect("failed to run shutdown");
+
+                        Ok(())
+                    },
+                    Err(err) => {
+                        eprintln!("Failed to flash EC: {}", err);
+                        Err(err)
+                    }
+                }
+            } else {
+                //TODO: return error
+                panic!("Failed to start flasher")
+            }
+        }
     } else {
         // Open arduino console
         let mut port = ParallelArduino::new("/dev/ttyACM0")?;
