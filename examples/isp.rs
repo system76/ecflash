@@ -9,7 +9,7 @@ use std::process;
 use std::time::Duration;
 use std::thread;
 
-use ecflash::{EcFlash, Flasher};
+use ecflash::EcFlash;
 
 #[repr(u8)]
 pub enum Address {
@@ -498,26 +498,81 @@ impl I2EC {
     }
 }
 
-impl Smfi for I2EC {
+pub struct Pmc {
+    data: Pio<u8>,
+    cmd: Pio<u8>,
+}
+
+impl Pmc {
+    pub fn new(base: u16) -> Self {
+        Self {
+            data: Pio::new(base),
+            cmd: Pio::new(base + 4),
+        }
+    }
+
+    pub unsafe fn can_read(&mut self) -> bool {
+        self.cmd.read() & 1 == 1
+    }
+
+    pub unsafe fn can_write(&mut self) -> bool {
+        self.cmd.read() & 2 == 0
+    }
+
+    pub unsafe fn command(&mut self, data: u8) {
+        while ! self.can_write() {}
+        self.cmd.write(data);
+    }
+
+    pub unsafe fn read(&mut self) -> u8 {
+        while ! self.can_read() {}
+        self.data.read()
+    }
+
+    pub unsafe fn write(&mut self, data: u8) {
+        while ! self.can_write() {}
+        self.data.write(data);
+    }
+
+    pub unsafe fn acpi_read(&mut self, address: u8) -> u8 {
+        self.command(0x80);
+        self.write(address);
+        self.read()
+    }
+
+    pub unsafe fn acpi_write(&mut self, address: u8, data: u8) {
+        self.command(0x81);
+        self.write(address);
+        self.write(data);
+    }
+}
+
+impl Smfi for Pmc {
     /// Set indar1 register (special case for follow mode)
     fn flash_indar1(&mut self, data: u8) -> Result<()> {
-        self.i2ec_write(0x103C, data);
+        unsafe {
+            self.acpi_write(Address::INDAR1 as u8, data);
+        }
         Ok(())
     }
 
     /// Set EC-indirect flash address
     fn flash_address(&mut self, address: u32) -> Result<()> {
-        self.i2ec_write(0x103E, (address >> 24) as u8);
-        self.i2ec_write(0x103D, (address >> 16) as u8);
-        self.i2ec_write(0x103C, (address >> 8) as u8);
-        self.i2ec_write(0x103B, (address) as u8);
+        unsafe {
+            self.acpi_write(Address::INDAR3 as u8, (address >> 24) as u8);
+            self.acpi_write(Address::INDAR2 as u8, (address >> 16) as u8);
+            self.acpi_write(Address::INDAR1 as u8, (address >> 8) as u8);
+            self.acpi_write(Address::INDAR0 as u8, (address) as u8);
+        }
         Ok(())
     }
 
     /// Read data from flash using EC-indirect mode
     fn flash_read(&mut self, data: &mut [u8]) -> Result<usize> {
         for b in data.iter_mut() {
-            *b = self.i2ec_read(0x103F);
+            unsafe {
+                *b = self.acpi_read(Address::INDDR as u8);
+            }
         }
         Ok(data.len())
     }
@@ -525,16 +580,18 @@ impl Smfi for I2EC {
     /// Write data to flash using EC-indirect mode
     fn flash_write(&mut self, data: &[u8]) -> Result<usize> {
         for b in data.iter() {
-            self.i2ec_write(0x103F, *b);
+            unsafe {
+                self.acpi_write(Address::INDDR as u8, *b);
+            }
         }
         Ok(data.len())
     }
 }
 
-fn isp_inner<T: Any + Smfi>(mut port: T, firmware: &[u8]) -> Result<()> {
+fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
     let rom_size = 128 * 1024;
 
-    let mut spi_bus = SpiBus::new(&mut port, true)?;
+    let mut spi_bus = SpiBus::new(port, true)?;
     let mut spi = SpiRom::new(&mut spi_bus);
 
     let mut rom = vec![0; rom_size];
@@ -679,6 +736,14 @@ fn isp(internal: bool, file: &str) -> Result<()> {
 
     if internal {
         unsafe {
+            if libc::iopl(3) < 0 {
+                eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
+                process::exit(1);
+            }
+
+            //TODO: return error
+            let _ec = EcFlash::new(true).expect("Failed to find EC");
+
             // Wait for any key releases
             eprintln!("Waiting 5 seconds for all keys to be released");
             thread::sleep(Duration::new(5, 0));
@@ -686,16 +751,12 @@ fn isp(internal: bool, file: &str) -> Result<()> {
             eprintln!("Sync");
             let _ = process::Command::new("sync").status();
 
-            if libc::iopl(3) < 0 {
-                eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
-                process::exit(1);
-            }
-
-            //TODO: return error
-            let ec = EcFlash::new(true).expect("Failed to find EC");
-            let mut flasher = Flasher::new(ec);
-            if flasher.start() == Ok(51) {
-                let res = isp_inner(I2EC::new()?, &firmware);
+            let mut pmc1 = Pmc::new(0x62);
+            let mut pmc3 = Pmc::new(0x6A);
+            // Enter scratch rom
+            pmc1.command(0xEC);
+            if Pmc::new(0x62).read() == 0x76 {
+                let res = isp_inner(&mut pmc3, &firmware);
 
                 eprintln!("Sync");
                 let _ = process::Command::new("sync").status();
@@ -707,7 +768,7 @@ fn isp(internal: bool, file: &str) -> Result<()> {
                 let _ = process::Command::new("sync").status();
 
                 // Will currently power off system
-                let _ = flasher.stop();
+                pmc3.command(0xEC);
 
                 match res {
                     Ok(()) => {
@@ -727,7 +788,7 @@ fn isp(internal: bool, file: &str) -> Result<()> {
                 }
             } else {
                 //TODO: return error
-                panic!("Failed to start flasher")
+                panic!("Failed to enter scratch ROM")
             }
         }
     } else {
@@ -745,7 +806,7 @@ fn isp(internal: bool, file: &str) -> Result<()> {
 
         eprintln!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
 
-        isp_inner(port, &firmware)
+        isp_inner(&mut port, &firmware)
     }
 }
 
