@@ -1,5 +1,6 @@
 use hwio::{Io, Pio};
 use serialport::{Error, ErrorKind, Result, SerialPortSettings, posix::TTYPort};
+use std::any::Any;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -71,26 +72,20 @@ pub trait Debugger {
         self.ecms_address(address)?;
         self.ecms_write(data)
     }
+}
+
+pub trait Smfi {
+    /// Set indar1 register (special case for follow mode)
+    fn flash_indar1(&mut self, data: u8) -> Result<()>;
 
     /// Set EC-indirect flash address
-    fn flash_address(&mut self, address: u32) -> Result<()> {
-        self.write_at(Address::INDAR3, &[(address >> 24) as u8])?;
-        self.write_at(Address::INDAR2, &[(address >> 16) as u8])?;
-        self.write_at(Address::INDAR1, &[(address >> 8) as u8])?;
-        self.write_at(Address::INDAR0, &[(address) as u8])?;
-
-        Ok(())
-    }
+    fn flash_address(&mut self, address: u32) -> Result<()>;
 
     /// Read data from flash using EC-indirect mode
-    fn flash_read(&mut self, data: &mut [u8]) -> Result<usize> {
-        self.read_at(Address::INDDR, data)
-    }
+    fn flash_read(&mut self, data: &mut [u8]) -> Result<usize>;
 
     /// Write data to flash using EC-indirect mode
-    fn flash_write(&mut self, data: &[u8]) -> Result<usize> {
-        self.write_at(Address::INDDR, data)
-    }
+    fn flash_write(&mut self, data: &[u8]) -> Result<usize>;
 
     /// Read data from flash at address using EC-indirect mode
     fn flash_read_at(&mut self, address: u32, data: &mut [u8]) -> Result<usize> {
@@ -105,12 +100,39 @@ pub trait Debugger {
     }
 }
 
-pub struct SpiBus<'a, T: Debugger> {
+impl<T> Smfi for T where T: Debugger {
+    /// Set indar1 register (special case for follow mode)
+    fn flash_indar1(&mut self, data: u8) -> Result<()> {
+        self.write_at(Address::INDAR1, &[data])?;
+        Ok(())
+    }
+
+    /// Set EC-indirect flash address
+    fn flash_address(&mut self, address: u32) -> Result<()> {
+        self.write_at(Address::INDAR3, &[(address >> 24) as u8])?;
+        self.write_at(Address::INDAR2, &[(address >> 16) as u8])?;
+        self.write_at(Address::INDAR1, &[(address >> 8) as u8])?;
+        self.write_at(Address::INDAR0, &[(address) as u8])?;
+        Ok(())
+    }
+
+    /// Read data from flash using EC-indirect mode
+    fn flash_read(&mut self, data: &mut [u8]) -> Result<usize> {
+        self.read_at(Address::INDDR, data)
+    }
+
+    /// Write data to flash using EC-indirect mode
+    fn flash_write(&mut self, data: &[u8]) -> Result<usize> {
+        self.write_at(Address::INDDR, data)
+    }
+}
+
+pub struct SpiBus<'a, T: Smfi> {
     port: &'a mut T,
     data: bool,
 }
 
-impl<'a, T: Debugger> SpiBus<'a, T> {
+impl<'a, T: Smfi> SpiBus<'a, T> {
     pub fn new(port: &'a mut T, eflash: bool) -> Result<Self> {
         port.flash_address(
             if eflash { 0x7FFF_FE00 } else { 0xFFFF_FE00 },
@@ -124,7 +146,7 @@ impl<'a, T: Debugger> SpiBus<'a, T> {
     /// Disable SPI chip - should be done before and after each transaction
     pub fn reset(&mut self) -> Result<()> {
         if self.data {
-            self.port.write_at(Address::INDAR1, &[0xFE])?;
+            self.port.flash_indar1(0xFE)?;
             self.data = false;
         }
         self.port.flash_write(&[0])?;
@@ -134,7 +156,7 @@ impl<'a, T: Debugger> SpiBus<'a, T> {
     /// Read from SPI chip directly using follow mode
     pub fn read(&mut self, data: &mut [u8]) -> Result<usize> {
         if !self.data {
-            self.port.write_at(Address::INDAR1, &[0xFD])?;
+            self.port.flash_indar1(0xFD)?;
             self.data = true;
         }
         self.port.flash_read(data)
@@ -143,24 +165,24 @@ impl<'a, T: Debugger> SpiBus<'a, T> {
     /// Write to SPI chip directly using follow mode
     pub fn write(&mut self, data: &[u8]) -> Result<usize> {
         if !self.data {
-            self.port.write_at(Address::INDAR1, &[0xFD])?;
+            self.port.flash_indar1(0xFD)?;
             self.data = true;
         }
         self.port.flash_write(data)
     }
 }
 
-impl<'a, T: Debugger> Drop for SpiBus<'a, T> {
+impl<'a, T: Smfi> Drop for SpiBus<'a, T> {
     fn drop(&mut self) {
         let _ = self.reset();
     }
 }
 
-struct SpiRom<'a, 't, T: Debugger> {
+struct SpiRom<'a, 't, T: Smfi> {
     bus: &'a mut SpiBus<'t, T>,
 }
 
-impl<'a, 't, T: Debugger> SpiRom<'a, 't, T> {
+impl<'a, 't, T: Smfi> SpiRom<'a, 't, T> {
     pub fn new(bus: &'a mut SpiBus<'t, T>) -> Self {
         Self { bus }
     }
@@ -306,7 +328,7 @@ impl<'a, 't, T: Debugger> SpiRom<'a, 't, T> {
     }
 }
 
-impl<'a, 't, T: Debugger> Drop for SpiRom<'a, 't, T> {
+impl<'a, 't, T: Smfi> Drop for SpiRom<'a, 't, T> {
     fn drop(&mut self) {
         let _ = self.write_disable();
     }
@@ -473,40 +495,41 @@ impl I2EC {
     }
 }
 
-fn isp(file: &str) -> Result<()> {
+impl Smfi for I2EC {
+    /// Set indar1 register (special case for follow mode)
+    fn flash_indar1(&mut self, data: u8) -> Result<()> {
+        self.i2ec_write(0x103C, data);
+        Ok(())
+    }
+
+    /// Set EC-indirect flash address
+    fn flash_address(&mut self, address: u32) -> Result<()> {
+        self.i2ec_write(0x103E, (address >> 24) as u8);
+        self.i2ec_write(0x103D, (address >> 16) as u8);
+        self.i2ec_write(0x103C, (address >> 8) as u8);
+        self.i2ec_write(0x103B, (address) as u8);
+        Ok(())
+    }
+
+    /// Read data from flash using EC-indirect mode
+    fn flash_read(&mut self, data: &mut [u8]) -> Result<usize> {
+        for b in data.iter_mut() {
+            *b = self.i2ec_read(0x103F);
+        }
+        Ok(data.len())
+    }
+
+    /// Write data to flash using EC-indirect mode
+    fn flash_write(&mut self, data: &[u8]) -> Result<usize> {
+        for b in data.iter() {
+            self.i2ec_write(0x103F, *b);
+        }
+        Ok(data.len())
+    }
+}
+
+fn isp_inner<T: Any + Smfi>(mut port: T, firmware: &[u8]) -> Result<()> {
     let rom_size = 128 * 1024;
-    let aai_accelerated = true;
-
-    // Read firmware data
-    let firmware = {
-        let mut firmware = fs::read(file)?;
-
-        // Truncate 0xFF bytes
-        while firmware.last() == Some(&0xFF) {
-            firmware.pop();
-        }
-
-        // Make sure firmware length is a multiple of word size
-        while firmware.len() % 2 != 0 {
-            firmware.push(0xFF);
-        }
-
-        firmware
-    };
-
-    // Open arduino console
-    let mut port = ParallelArduino::new("/dev/ttyACM0")?;
-
-    // Read ID
-    let mut id = [0; 3];
-    port.address(0)?;
-    port.read(&mut id[0..1])?;
-    port.address(1)?;
-    port.read(&mut id[1..2])?;
-    port.address(2)?;
-    port.read(&mut id[2..3])?;
-
-    eprintln!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
 
     let mut spi_bus = SpiBus::new(&mut port, true)?;
     let mut spi = SpiRom::new(&mut spi_bus);
@@ -578,30 +601,33 @@ fn isp(file: &str) -> Result<()> {
     // Program
     {
         // Auto address increment word program
-        if aai_accelerated {
+        if (spi.bus.port as &mut dyn Any).is::<ParallelArduino>() {
             spi.write_enable()?;
 
-            eprintln!("SPI AAI word program (accelerated)");
-            for (i, chunk) in firmware.chunks(spi.bus.port.buffer_size).enumerate() {
-                eprint!("  program {} / {}\r", i * spi.bus.port.buffer_size, firmware.len());
+            {
+                eprintln!("SPI AAI word program (accelerated)");
+                let port = (spi.bus.port as &mut dyn Any).downcast_mut::<ParallelArduino>().unwrap();
+                for (i, chunk) in firmware.chunks(port.buffer_size).enumerate() {
+                    eprint!("  program {} / {}\r", i * port.buffer_size, firmware.len());
 
-                let param = (chunk.len() - 1) as u8;
-                spi.bus.port.tty.write_all(&[
-                    b'P',
-                    param
-                ])?;
-                spi.bus.port.tty.write_all(chunk)?;
+                    let param = (chunk.len() - 1) as u8;
+                    port.tty.write_all(&[
+                        b'P',
+                        param
+                    ])?;
+                    port.tty.write_all(chunk)?;
 
-                let mut b = [0];
-                spi.bus.port.tty.read_exact(&mut b)?;
-                if b[0] != param {
-                    return Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        format!("received ack of {:02X} instead of {:02X}", b[0], param)
-                    ));
+                    let mut b = [0];
+                    port.tty.read_exact(&mut b)?;
+                    if b[0] != param {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            format!("received ack of {:02X} instead of {:02X}", b[0], param)
+                        ));
+                    }
                 }
+                eprintln!("  program {} / {}", firmware.len(), firmware.len());
             }
-            eprintln!("  program {} / {}", firmware.len(), firmware.len());
 
             spi.write_disable()?;
         } else {
@@ -630,8 +656,56 @@ fn isp(file: &str) -> Result<()> {
     Ok(())
 }
 
+fn isp(internal: bool, file: &str) -> Result<()> {
+    // Read firmware data
+    let firmware = {
+        let mut firmware = fs::read(file)?;
+
+        // Truncate 0xFF bytes
+        while firmware.last() == Some(&0xFF) {
+            firmware.pop();
+        }
+
+        // Make sure firmware length is a multiple of word size
+        while firmware.len() % 2 != 0 {
+            firmware.push(0xFF);
+        }
+
+        firmware
+    };
+
+    if internal {
+        isp_inner(I2EC::new()?, &firmware)
+    } else {
+        // Open arduino console
+        let mut port = ParallelArduino::new("/dev/ttyACM0")?;
+
+        // Read ID
+        let mut id = [0; 3];
+        port.address(0)?;
+        port.read(&mut id[0..1])?;
+        port.address(1)?;
+        port.read(&mut id[1..2])?;
+        port.address(2)?;
+        port.read(&mut id[2..3])?;
+
+        eprintln!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
+
+        isp_inner(port, &firmware)
+    }
+}
+
 fn main() {
+    let mut file_opt = None;
+    let mut internal = false;
+    for arg in env::args().skip(1) {
+        if arg == "--internal" {
+            internal = true;
+        } else {
+            file_opt = Some(arg);
+        }
+    }
     //TODO: better errors
-    let file = env::args().nth(1).expect("no firmware file provided");
-    isp(&file).expect("failed to flash");
+    let file = file_opt.expect("no firmware file provided");
+    isp(internal, &file).expect("failed to flash");
 }
