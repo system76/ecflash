@@ -520,16 +520,19 @@ impl Pmc {
     }
 
     pub unsafe fn command(&mut self, data: u8) {
+        eprintln!("PMC command {:02X}", data);
         while ! self.can_write() {}
         self.cmd.write(data);
     }
 
     pub unsafe fn read(&mut self) -> u8 {
+        eprintln!("PMC read");
         while ! self.can_read() {}
         self.data.read()
     }
 
     pub unsafe fn write(&mut self, data: u8) {
+        eprintln!("PMC write {:02X}", data);
         while ! self.can_write() {}
         self.data.write(data);
     }
@@ -755,7 +758,9 @@ fn isp(internal: bool, file: &str) -> Result<()> {
             let mut pmc3 = Pmc::new(0x6A);
             // Enter scratch rom
             pmc1.command(0xEC);
-            if Pmc::new(0x62).read() == 0x76 {
+            if pmc1.read() == 0x76 {
+                eprintln!("Entered scratch ROM");
+
                 let res = isp_inner(&mut pmc3, &firmware);
 
                 eprintln!("Sync");
