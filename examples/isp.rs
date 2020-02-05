@@ -520,19 +520,19 @@ impl Pmc {
     }
 
     pub unsafe fn command(&mut self, data: u8) {
-        eprintln!("PMC command {:02X}", data);
+        //eprintln!("PMC command {:02X}", data);
         while ! self.can_write() {}
         self.cmd.write(data);
     }
 
     pub unsafe fn read(&mut self) -> u8 {
-        eprintln!("PMC read");
+        //eprintln!("PMC read");
         while ! self.can_read() {}
         self.data.read()
     }
 
     pub unsafe fn write(&mut self, data: u8) {
-        eprintln!("PMC write {:02X}", data);
+        //eprintln!("PMC write {:02X}", data);
         while ! self.can_write() {}
         self.data.write(data);
     }
