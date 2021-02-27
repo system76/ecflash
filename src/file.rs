@@ -50,6 +50,6 @@ impl Ec for EcFile {
 
     fn version(&mut self) -> String {
         let version = unsafe { self.get_str(b"VER:") };
-        version.trim_left_matches(' ')
+        String::from(version.trim_start_matches(' '))
     }
 }
