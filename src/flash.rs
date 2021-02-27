@@ -25,10 +25,9 @@ impl EcFlash {
             timeout -= 1;
         }
 
-        if timeout == 0 {
-            Err(())
-        } else {
-            Ok(())
+        match timeout {
+            0 => Err(()),
+            _ => Ok(()),
         }
     }
 
@@ -41,10 +40,9 @@ impl EcFlash {
             timeout -= 1;
         }
 
-        if timeout == 0 {
-            Err(())
-        } else {
-            Ok(())
+        match timeout {
+            0 => Err(()),
+            _ => Ok(()),
         }
     }
 
@@ -55,10 +53,9 @@ impl EcFlash {
             i -= 1;
         }
 
-        if i == 0 {
-            Err(())
-        } else {
-            Ok(())
+        match i {
+            0 => Err(()),
+            _ => Ok(()),
         }
     }
 
@@ -138,10 +135,9 @@ impl EcFlash {
             return Err(format!("Unknown EC ID: 0x{:>04X}", id));
         }
 
-        let (data_port, cmd_port) = if primary {
-            (0x62, 0x66)
-        } else {
-            (0x68, 0x6c)
+        let (data_port, cmd_port) = match primary {
+            true => (0x62, 0x66),
+            false => (0x68, 0x6c),
         };
 
         let ec = Self {
