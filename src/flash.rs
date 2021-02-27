@@ -88,6 +88,23 @@ impl EcFlash {
         self.write(data)
     }
 
+    pub unsafe fn fcommand(&mut self, cmd: u8, dat: u8, buf: &mut [u8; 4]) -> Result<(), ()> {
+        self.set_param(0xF9, dat)?;
+        self.set_param(0xFA, buf[0])?;
+        self.set_param(0xFB, buf[1])?;
+        self.set_param(0xFC, buf[2])?;
+        self.set_param(0xFD, buf[3])?;
+
+        self.set_param(0xF8, cmd)?;
+
+        buf[0] = self.get_param(0xFA)?;
+        buf[1] = self.get_param(0xFB)?;
+        buf[2] = self.get_param(0xFC)?;
+        buf[3] = self.get_param(0xFD)?;
+
+        self.set_param(0xF8, 0x00)
+    }
+
     pub unsafe fn get_str(&mut self, index: u8) -> Result<String, ()> {
         let mut string = String::new();
 
