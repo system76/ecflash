@@ -75,6 +75,13 @@ pub trait Debugger {
         self.ecms_address(address)?;
         self.ecms_write(data)
     }
+
+    /// System76 EC specific debug function
+    fn read_debug(&mut self, offset: u8) -> Result<u8> {
+        let mut b = [0];
+        self.ecms_read_at(0xF00 + offset as u16, &mut b)?;
+        Ok(b[0])
+    }
 }
 
 pub trait Smfi {
@@ -394,7 +401,6 @@ impl ParallelArduino {
         // Size is recieved data + 1
         self.buffer_size = (b[0] as usize) + 1;
 
-        eprintln!("Buffer size: {}", self.buffer_size);
         Ok(())
     }
 }
@@ -811,7 +817,79 @@ fn isp(internal: bool, file: &str) -> Result<()> {
 
         eprintln!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
 
-        isp_inner(&mut port, &firmware)
+        /*
+        loop {
+            eprint!("# ");
+
+            let mut line = String::new();
+            io::stdin().read_line(&mut line).unwrap();
+
+            if line.is_empty() {
+                eprintln!();
+                break;
+            }
+
+            let mut parts = line.trim().split(" ");
+
+            if let Some(addr_str) = parts.next() {
+                match u16::from_str_radix(addr_str, 16) {
+                    Ok(addr) => {
+                        eprint!("{:04X} ", addr);
+
+                        if let Some(value_str) = parts.next() {
+                            match u8::from_str_radix(value_str, 16) {
+                                Ok(value) => {
+                                    port.ecms_write_at(addr, &[value])?;
+                                },
+                                Err(err) => {
+                                    eprintln!("failed to parse '{}': {}", value_str, err);
+                                }
+                            }
+                        }
+
+                        let mut b = [0];
+                        port.ecms_read_at(addr, &mut b)?;
+
+                        eprintln!("{:02X}", b[0]);
+                    },
+                    Err(err) => {
+                        eprintln!("failed to parse '{}': {}", addr_str, err);
+                    }
+                }
+            }
+        }
+        */
+
+        eprintln!("Disabling EC SPI access, if necessary");
+        port.ecms_write_at(0x103E, &[0])?;
+        port.ecms_write_at(0x103D, &[0])?;
+        port.ecms_write_at(0x103C, &[0])?;
+        port.ecms_write_at(0x103B, &[0])?;
+
+        isp_inner(&mut port, &firmware)?;
+
+        // DBGR reset
+        eprintln!("DBGR reset");
+        port.address(0x27)?;
+        port.write(&[0x80])?;
+
+        eprintln!("System76 EC console output");
+        let mut head = port.read_debug(0)? as usize;
+        loop {
+            let tail = port.read_debug(0)? as usize;
+            if tail == 0 || head == tail {
+                thread::sleep(Duration::from_millis(1));
+            } else {
+                while head != tail {
+                    head += 1;
+                    if head >= 256 { head = 1; }
+                    let c = port.read_debug(head as u8)?;
+                    print!("{}", c as char);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
