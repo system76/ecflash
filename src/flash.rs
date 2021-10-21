@@ -1,3 +1,7 @@
+#![allow(clippy::missing_safety_doc)]
+// TODO: Use real errors
+#![allow(clippy::result_unit_err)]
+
 use alloc::string::String;
 
 use super::Ec;
@@ -145,9 +149,9 @@ impl EcFlash {
         };
 
         let ec = Self {
-            primary: primary,
-            data_port: data_port,
-            cmd_port: cmd_port,
+            primary,
+            data_port,
+            cmd_port,
         };
 
         Ok(ec)
@@ -168,13 +172,13 @@ impl Ec for EcFlash {
     fn project(&mut self) -> String {
         let _ = unsafe { self.flush() };
 
-        unsafe { self.get_str(0x92) }.unwrap_or(String::new())
+        unsafe { self.get_str(0x92) }.unwrap_or_default()
     }
 
     fn version(&mut self) -> String {
         let _ = unsafe { self.flush() };
 
-        let mut version = unsafe { self.get_str(0x93) }.unwrap_or(String::new());
+        let mut version = unsafe { self.get_str(0x93) }.unwrap_or_default();
         version.insert_str(0, "1.");
         version
     }

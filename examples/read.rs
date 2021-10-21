@@ -21,13 +21,13 @@ fn main() {
 
         if flasher.start() == Ok(51) {
             if let Ok(data) = flasher.read(|x| { eprint!("\r{} KB", x / 1024) }) {
-                eprintln!("");
+                eprintln!();
                 let _ = fs::write("read.rom", data);
             } else {
                 eprintln!("Failed to read data");
             }
 
-            flasher.stop();
+            let _ = flasher.stop();
         } else {
             eprintln!("Failed to start flasher");
         }

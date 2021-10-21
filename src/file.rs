@@ -1,3 +1,5 @@
+#![allow(clippy::missing_safety_doc)]
+
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -10,8 +12,8 @@ impl EcFile {
         let mut string = String::new();
 
         let mut i = 0;
-        let mut bytes = self.0.iter();
-        while let Some(&byte) = bytes.next() {
+        let bytes = self.0.iter();
+        for &byte in bytes {
             loop {
                 if i < key.len() {
                     if byte == key[i] {
@@ -50,7 +52,7 @@ impl Ec for EcFile {
 
     fn version(&mut self) -> String {
         let mut version = unsafe { self.get_str(b"VER:") };
-        while version.chars().next() == Some(' ') {
+        while version.starts_with(' ') {
             version.remove(0);
         }
         version
