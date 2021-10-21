@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 extern crate ecflash;
 
 use ecflash::{EcFlash, Flasher};
@@ -40,13 +42,13 @@ fn main() {
             let mut success = false;
 
             if let Ok(_original) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
-                eprintln!("");
+                eprintln!();
 
                 if flasher.erase(|x| eprint!("\rErase: {} KB", x / 1024)).is_ok() {
-                    eprintln!("");
+                    eprintln!();
 
                     if let Ok(erased) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
-                        eprintln!("");
+                        eprintln!();
 
                         //TODO: retry erase on fail
                         for i in 0..erased.len() {
@@ -60,10 +62,10 @@ fn main() {
                         }
 
                         if flasher.write(&data, |x| eprint!("\rWrite {} KB", x / 1024)).is_ok() {
-                            eprintln!("");
+                            eprintln!();
 
                             if let Ok(written) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
-                                eprintln!("");
+                                eprintln!();
 
                                 success = true;
                                 for i in 0..written.len() {

@@ -33,7 +33,7 @@ fn main() {
         }
     }
 
-    let mut ecs: Vec<(String, Box<Ec>)> = Vec::new();
+    let mut ecs: Vec<(String, Box<dyn Ec>)> = Vec::new();
 
     for arg in env::args().skip(1) {
         match arg.as_str() {

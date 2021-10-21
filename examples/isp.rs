@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::needless_range_loop)]
+
 use hwio::{Io, Pio};
 use serialport::{Error, ErrorKind, Result, SerialPortSettings, posix::TTYPort};
 use std::any::Any;
@@ -695,7 +699,7 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
             spi.write_disable()?;
         } else {
             eprintln!("SPI AAI word program");
-            spi.write_at(0, &firmware)?;
+            spi.write_at(0, firmware)?;
         }
 
 

@@ -1,3 +1,7 @@
+#![allow(clippy::missing_safety_doc)]
+// TODO: Use real errors
+#![allow(clippy::result_unit_err)]
+
 use alloc::vec::Vec;
 
 use super::{Ec, EcFlash};
