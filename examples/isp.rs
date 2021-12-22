@@ -15,6 +15,11 @@ use std::thread;
 
 use ecflash::EcFlash;
 
+const EC_KNOWN_IDS: &[u16] = &[
+    0x5570,
+    0x8587,
+];
+
 #[repr(u8)]
 pub enum Address {
     CHIPID0 = 0,
@@ -813,7 +818,10 @@ fn isp(internal: bool, file: &str) -> Result<()> {
         port.address(2)?;
         port.read(&mut id[2..3])?;
 
-        eprintln!("ID: {:02X}{:02X} VER: {}", id[0], id[1], id[2]);
+        let ecid = ((id[0] as u16) << 8) | (id[1] as u16);
+
+        eprintln!("ID: {:04X} VER: {}", ecid, id[2]);
+        assert!(EC_KNOWN_IDS.contains(&ecid), "Unknown ID: {:04X}", ecid);
 
         isp_inner(&mut port, &firmware)
     }
