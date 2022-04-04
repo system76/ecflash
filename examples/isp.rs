@@ -3,12 +3,11 @@
 #![allow(clippy::needless_range_loop)]
 
 use hwio::{Io, Pio};
-use serialport::{Error, ErrorKind, Result, SerialPortSettings, posix::TTYPort};
+use serialport::{Error, ErrorKind, Result, TTYPort};
 use std::any::Any;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::Path;
 use std::process;
 use std::time::Duration;
 use std::thread;
@@ -353,15 +352,14 @@ pub struct ParallelArduino {
 
 impl ParallelArduino {
     /// Connect to parallel port arduino using provided port
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let tty = TTYPort::open(path.as_ref(), &SerialPortSettings {
-            baud_rate: 1000000,
-            data_bits: serialport::DataBits::Eight,
-            flow_control: serialport::FlowControl::None,
-            parity: serialport::Parity::None,
-            stop_bits: serialport::StopBits::One,
-            timeout: Duration::new(1, 0),
-        })?;
+    pub fn new<S: AsRef<str>>(path: S) -> Result<Self> {
+        let tty = serialport::new(path.as_ref(), 1_000_000)
+            .data_bits(serialport::DataBits::Eight)
+            .flow_control(serialport::FlowControl::None)
+            .parity(serialport::Parity::None)
+            .stop_bits(serialport::StopBits::One)
+            .timeout(Duration::new(1, 0))
+            .open_native()?;
 
         let mut port = Self { tty, buffer_size: 0 };
         // Wait until programmer is ready
