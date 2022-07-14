@@ -12,5 +12,4 @@ name = "ecflash"
 
 [dev-dependencies]
 libc = "0.2.121"
-redox_hwio = "0.1.5"
 serialport = "4.1.0"
