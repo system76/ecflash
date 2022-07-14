@@ -6,7 +6,7 @@ use ecflash::{EcFlash, Flasher};
 use std::{env, fs, io, process, thread, time};
 
 fn main() {
-    extern {
+    extern "C" {
         fn iopl(level: isize) -> isize;
     }
 
@@ -26,7 +26,10 @@ fn main() {
     // Get I/O Permission
     unsafe {
         if iopl(3) < 0 {
-            eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
+            eprintln!(
+                "Failed to get I/O permission: {}",
+                io::Error::last_os_error()
+            );
             process::exit(1);
         }
 
@@ -44,7 +47,10 @@ fn main() {
             if let Ok(_original) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
                 eprintln!();
 
-                if flasher.erase(|x| eprint!("\rErase: {} KB", x / 1024)).is_ok() {
+                if flasher
+                    .erase(|x| eprint!("\rErase: {} KB", x / 1024))
+                    .is_ok()
+                {
                     eprintln!();
 
                     if let Ok(erased) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
@@ -53,18 +59,19 @@ fn main() {
                         //TODO: retry erase on fail
                         for i in 0..erased.len() {
                             if erased[i] != 0xFF {
-                                println!(
-                                    "0x{:X}: 0x{:02X} != 0xFF",
-                                    i,
-                                    erased[i]
-                                );
+                                println!("0x{:X}: 0x{:02X} != 0xFF", i, erased[i]);
                             }
                         }
 
-                        if flasher.write(&data, |x| eprint!("\rWrite {} KB", x / 1024)).is_ok() {
+                        if flasher
+                            .write(&data, |x| eprint!("\rWrite {} KB", x / 1024))
+                            .is_ok()
+                        {
                             eprintln!();
 
-                            if let Ok(written) = flasher.read(|x| eprint!("\rRead: {} KB", x / 1024)) {
+                            if let Ok(written) =
+                                flasher.read(|x| eprint!("\rRead: {} KB", x / 1024))
+                            {
                                 eprintln!();
 
                                 success = true;
@@ -72,9 +79,7 @@ fn main() {
                                     if written[i] != data[i] {
                                         println!(
                                             "0x{:X}: 0x{:02X} != 0x{:02X}",
-                                            i,
-                                            written[i],
-                                            data[i]
+                                            i, written[i], data[i]
                                         );
                                         success = false;
                                     }

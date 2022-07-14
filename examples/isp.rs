@@ -9,15 +9,12 @@ use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::process;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 use ecflash::EcFlash;
 
-const EC_KNOWN_IDS: &[u16] = &[
-    0x5570,
-    0x8587,
-];
+const EC_KNOWN_IDS: &[u16] = &[0x5570, 0x8587];
 
 #[repr(u8)]
 pub enum Address {
@@ -111,7 +108,10 @@ pub trait Smfi {
     }
 }
 
-impl<T> Smfi for T where T: Debugger {
+impl<T> Smfi for T
+where
+    T: Debugger,
+{
     /// Set indar1 register (special case for follow mode)
     fn flash_indar1(&mut self, data: u8) -> Result<()> {
         self.write_at(Address::INDAR1, &[data])?;
@@ -145,9 +145,7 @@ pub struct SpiBus<'a, T: Smfi> {
 
 impl<'a, T: Smfi> SpiBus<'a, T> {
     pub fn new(port: &'a mut T, eflash: bool) -> Result<Self> {
-        port.flash_address(
-            if eflash { 0x7FFF_FE00 } else { 0xFFFF_FE00 },
-        )?;
+        port.flash_address(if eflash { 0x7FFF_FE00 } else { 0xFFFF_FE00 })?;
 
         let mut spi = Self { port, data: false };
         spi.reset()?;
@@ -249,7 +247,7 @@ impl<'a, 't, T: Smfi> SpiRom<'a, 't, T> {
         if (address & 0xFF00_0000) > 0 {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("address {:X} exceeds 24 bits", address)
+                format!("address {:X} exceeds 24 bits", address),
             ));
         }
 
@@ -276,7 +274,7 @@ impl<'a, 't, T: Smfi> SpiRom<'a, 't, T> {
         if (address & 0xFF00_0000) > 0 {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("address {:X} exceeds 24 bits", address)
+                format!("address {:X} exceeds 24 bits", address),
             ));
         }
 
@@ -295,7 +293,7 @@ impl<'a, 't, T: Smfi> SpiRom<'a, 't, T> {
         if (address & 0xFF00_0000) > 0 {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("address {:X} exceeds 24 bits", address)
+                format!("address {:X} exceeds 24 bits", address),
             ));
         }
 
@@ -303,7 +301,7 @@ impl<'a, 't, T: Smfi> SpiRom<'a, 't, T> {
         if (data.len() % 2) != 0 {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("length {} is not a multiple of 2", data.len())
+                format!("length {} is not a multiple of 2", data.len()),
             ));
         }
 
@@ -318,14 +316,10 @@ impl<'a, 't, T: Smfi> SpiRom<'a, 't, T> {
                     (address >> 8) as u8,
                     address as u8,
                     word[0],
-                    word[1]
+                    word[1],
                 ])?;
             } else {
-                self.bus.write(&[
-                    0xAD,
-                    word[0],
-                    word[1]
-                ])?;
+                self.bus.write(&[0xAD, word[0], word[1]])?;
             }
 
             // Poll status for busy flag
@@ -361,7 +355,10 @@ impl ParallelArduino {
             .timeout(Duration::new(1, 0))
             .open_native()?;
 
-        let mut port = Self { tty, buffer_size: 0 };
+        let mut port = Self {
+            tty,
+            buffer_size: 0,
+        };
         // Wait until programmer is ready
         thread::sleep(Duration::new(1, 0));
         // Check that programmer is ready
@@ -373,28 +370,21 @@ impl ParallelArduino {
     }
 
     fn echo(&mut self) -> Result<()> {
-        self.tty.write_all(&[
-            b'E',
-            0,
-            0x76,
-        ])?;
+        self.tty.write_all(&[b'E', 0, 0x76])?;
 
         let mut b = [0];
         self.tty.read_exact(&mut b)?;
         if b[0] != 0x76 {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("received echo of {:02X} instead of {:02X}", b[0], 0x76)
+                format!("received echo of {:02X} instead of {:02X}", b[0], 0x76),
             ));
         }
         Ok(())
     }
 
     fn update_buffer_size(&mut self) -> Result<()> {
-        self.tty.write_all(&[
-            b'B',
-            0,
-        ])?;
+        self.tty.write_all(&[b'B', 0])?;
 
         let mut b = [0; 1];
         self.tty.read_exact(&mut b)?;
@@ -408,10 +398,7 @@ impl ParallelArduino {
 
 impl Debugger for ParallelArduino {
     fn address(&mut self, address: u8) -> Result<()> {
-        self.tty.write_all(&[
-            b'A',
-            address,
-        ])?;
+        self.tty.write_all(&[b'A', address])?;
 
         Ok(())
     }
@@ -419,10 +406,7 @@ impl Debugger for ParallelArduino {
     fn read(&mut self, data: &mut [u8]) -> Result<usize> {
         for chunk in data.chunks_mut(self.buffer_size) {
             let param = (chunk.len() - 1) as u8;
-            self.tty.write_all(&[
-                b'R',
-                param,
-            ])?;
+            self.tty.write_all(&[b'R', param])?;
             self.tty.read_exact(chunk)?;
         }
 
@@ -432,10 +416,7 @@ impl Debugger for ParallelArduino {
     fn write(&mut self, data: &[u8]) -> Result<usize> {
         for chunk in data.chunks(self.buffer_size) {
             let param = (chunk.len() - 1) as u8;
-            self.tty.write_all(&[
-                b'W',
-                param,
-            ])?;
+            self.tty.write_all(&[b'W', param])?;
             self.tty.write_all(chunk)?;
 
             let mut b = [0];
@@ -443,7 +424,7 @@ impl Debugger for ParallelArduino {
             if b[0] != param {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
-                    format!("received ack of {:02X} instead of {:02X}", b[0], param)
+                    format!("received ack of {:02X} instead of {:02X}", b[0], param),
                 ));
             }
         }
@@ -461,9 +442,7 @@ impl I2EC {
     pub fn new() -> Result<Self> {
         //TODO: check EC ID using super i/o
         if unsafe { libc::iopl(3) } != 0 {
-            return Err(Error::from(
-                io::Error::last_os_error()
-            ));
+            return Err(Error::from(io::Error::last_os_error()));
         }
 
         Ok(Self {
@@ -528,19 +507,19 @@ impl Pmc {
 
     pub unsafe fn command(&mut self, data: u8) {
         //eprintln!("PMC command {:02X}", data);
-        while ! self.can_write() {}
+        while !self.can_write() {}
         self.cmd.write(data);
     }
 
     pub unsafe fn read(&mut self) -> u8 {
         //eprintln!("PMC read");
-        while ! self.can_read() {}
+        while !self.can_read() {}
         self.data.read()
     }
 
     pub unsafe fn write(&mut self, data: u8) {
         //eprintln!("PMC write {:02X}", data);
-        while ! self.can_write() {}
+        while !self.can_write() {}
         self.data.write(data);
     }
 
@@ -638,7 +617,7 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
             let mut erased = true;
             for &b in &rom[address..address + 1024] {
                 if b != 0xFF {
-                    erased =false;
+                    erased = false;
                     break;
                 }
             }
@@ -662,7 +641,10 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
         if rom[i] != 0xFF {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("Failed to erase: {:X} is {:X} instead of {:X}", i, rom[i], 0xFF)
+                format!(
+                    "Failed to erase: {:X} is {:X} instead of {:X}",
+                    i, rom[i], 0xFF
+                ),
             ));
         }
     }
@@ -676,15 +658,14 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
 
             {
                 eprintln!("SPI AAI word program (accelerated)");
-                let port = (spi.bus.port as &mut dyn Any).downcast_mut::<ParallelArduino>().unwrap();
+                let port = (spi.bus.port as &mut dyn Any)
+                    .downcast_mut::<ParallelArduino>()
+                    .unwrap();
                 for (i, chunk) in firmware.chunks(port.buffer_size).enumerate() {
                     eprint!("  program {} / {}\r", i * port.buffer_size, firmware.len());
 
                     let param = (chunk.len() - 1) as u8;
-                    port.tty.write_all(&[
-                        b'P',
-                        param
-                    ])?;
+                    port.tty.write_all(&[b'P', param])?;
                     port.tty.write_all(chunk)?;
 
                     let mut b = [0];
@@ -692,7 +673,7 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
                     if b[0] != param {
                         return Err(Error::new(
                             ErrorKind::InvalidInput,
-                            format!("received ack of {:02X} instead of {:02X}", b[0], param)
+                            format!("received ack of {:02X} instead of {:02X}", b[0], param),
                         ));
                     }
                 }
@@ -705,7 +686,6 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
             spi.write_at(0, firmware)?;
         }
 
-
         // Read entire ROM
         eprintln!("SPI read");
         spi.read_at(0, &mut rom)?;
@@ -716,7 +696,10 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
         if &rom[i] != firmware.get(i).unwrap_or(&0xFF) {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
-                format!("Failed to program: {:X} is {:X} instead of {:X}", i, rom[i], firmware[i])
+                format!(
+                    "Failed to program: {:X} is {:X} instead of {:X}",
+                    i, rom[i], firmware[i]
+                ),
             ));
         }
     }
@@ -747,7 +730,10 @@ fn isp(internal: bool, file: &str) -> Result<()> {
     if internal {
         unsafe {
             if libc::iopl(3) < 0 {
-                eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
+                eprintln!(
+                    "Failed to get I/O permission: {}",
+                    io::Error::last_os_error()
+                );
                 process::exit(1);
             }
 
@@ -792,7 +778,7 @@ fn isp(internal: bool, file: &str) -> Result<()> {
                             .expect("failed to run shutdown");
 
                         Ok(())
-                    },
+                    }
                     Err(err) => {
                         eprintln!("Failed to flash EC: {}", err);
                         Err(err)

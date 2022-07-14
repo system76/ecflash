@@ -1,9 +1,9 @@
 extern crate ecflash;
 
-use std::{env, process};
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{stdout, stderr, BufWriter, Error, Read, Write};
+use std::io::{stderr, stdout, BufWriter, Error, Read, Write};
+use std::{env, process};
 
 use ecflash::{Ec, EcFile, EcFlash};
 
@@ -21,14 +21,18 @@ fn validate<T: PartialEq + Display, F: FnMut() -> T>(mut f: F, attempts: usize) 
 }
 
 fn main() {
-    extern {
+    extern "C" {
         fn iopl(level: isize) -> isize;
     }
 
     // Get I/O Permission
     unsafe {
         if iopl(3) < 0 {
-            let _ = writeln!(stderr(), "Failed to get I/O permission: {}", Error::last_os_error());
+            let _ = writeln!(
+                stderr(),
+                "Failed to get I/O permission: {}",
+                Error::last_os_error()
+            );
             process::exit(1);
         }
     }
@@ -40,7 +44,7 @@ fn main() {
             "-1" => match EcFlash::new(true) {
                 Ok(ec_flash) => {
                     ecs.push((String::new(), Box::new(ec_flash)));
-                },
+                }
                 Err(err) => {
                     let _ = writeln!(stderr(), "Failed to open EC flash 1: {}", err);
                     process::exit(1);
@@ -49,7 +53,7 @@ fn main() {
             "-2" => match EcFlash::new(false) {
                 Ok(ec_flash) => {
                     ecs.push((String::new(), Box::new(ec_flash)));
-                },
+                }
                 Err(err) => {
                     let _ = writeln!(stderr(), "Failed to open EC flash 2: {}", err);
                     process::exit(1);
@@ -65,12 +69,12 @@ fn main() {
                             process::exit(1);
                         }
                     }
-                },
+                }
                 Err(err) => {
                     let _ = writeln!(stderr(), "Failed to open EC file '{}': {}", arg, err);
                     process::exit(1);
                 }
-            }
+            },
         }
     }
 
@@ -86,7 +90,7 @@ fn main() {
         match validate(|| ec.project(), 8) {
             Ok(project) => {
                 let _ = writeln!(stdout, "  Project: {}", project);
-            },
+            }
             Err(()) => {
                 let _ = writeln!(stderr(), "Failed to read EC project");
                 process::exit(1);
@@ -96,7 +100,7 @@ fn main() {
         match validate(|| ec.version(), 8) {
             Ok(version) => {
                 let _ = writeln!(stdout, "  Version: {}", version);
-            },
+            }
             Err(()) => {
                 let _ = writeln!(stderr(), "Failed to read EC version");
                 process::exit(1);
@@ -105,8 +109,8 @@ fn main() {
 
         match validate(|| ec.size(), 8) {
             Ok(size) => {
-                let _ = writeln!(stdout, "  Size: {} KB", size/1024);
-            },
+                let _ = writeln!(stdout, "  Size: {} KB", size / 1024);
+            }
             Err(()) => {
                 let _ = writeln!(stderr(), "Failed to read EC size");
                 process::exit(1);

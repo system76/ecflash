@@ -4,15 +4,15 @@
 
 use alloc::string::String;
 
-use super::Ec;
 use super::io::{inb, outb};
+use super::Ec;
 
 const TIMEOUT: usize = 100000;
 
 pub struct EcFlash {
     primary: bool,
     data_port: u16,
-    cmd_port: u16
+    cmd_port: u16,
 }
 
 impl EcFlash {
@@ -25,7 +25,7 @@ impl EcFlash {
     }
 
     pub unsafe fn wait_read(&mut self, mut timeout: usize) -> Result<(), ()> {
-        while ! self.can_read() && timeout > 0 {
+        while !self.can_read() && timeout > 0 {
             timeout -= 1;
         }
 
@@ -41,7 +41,7 @@ impl EcFlash {
     }
 
     pub unsafe fn wait_write(&mut self, mut timeout: usize) -> Result<(), ()> {
-        while ! self.can_write() && timeout > 0 {
+        while !self.can_write() && timeout > 0 {
             timeout -= 1;
         }
 
@@ -142,11 +142,7 @@ impl EcFlash {
             return Err(format!("Unknown EC ID: 0x{:>04X}", id));
         }
 
-        let (data_port, cmd_port) = if primary {
-            (0x62, 0x66)
-        } else {
-            (0x68, 0x6c)
-        };
+        let (data_port, cmd_port) = if primary { (0x62, 0x66) } else { (0x68, 0x6c) };
 
         let ec = Self {
             primary,
