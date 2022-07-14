@@ -14,10 +14,7 @@ pub struct Flasher {
 impl Flasher {
     pub fn new(mut ec: EcFlash) -> Self {
         let size = ec.size();
-        Self {
-            ec,
-            size,
-        }
+        Self { ec, size }
     }
 
     unsafe fn enter_follow_mode(&mut self) -> Result<(), ()> {
@@ -79,7 +76,7 @@ impl Flasher {
     pub unsafe fn read<F: Fn(usize)>(&mut self, callback: F) -> Result<Vec<u8>, ()> {
         let mut buf = Vec::with_capacity(self.size);
 
-        for sector in 0..self.size/65536 {
+        for sector in 0..self.size / 65536 {
             self.spi_write_disable()?;
             self.spi_wait()?;
 
@@ -105,7 +102,7 @@ impl Flasher {
     }
 
     pub unsafe fn erase<F: Fn(usize)>(&mut self, callback: F) -> Result<(), ()> {
-        for sector in 0..self.size/65536 {
+        for sector in 0..self.size / 65536 {
             for block in 0..64 {
                 let index = sector * 65536 + block * 1024;
 
@@ -126,7 +123,7 @@ impl Flasher {
     }
 
     pub unsafe fn write<F: Fn(usize)>(&mut self, buf: &[u8], callback: F) -> Result<(), ()> {
-        for sector in 0..self.size/65536 {
+        for sector in 0..self.size / 65536 {
             self.spi_write_enable()?;
 
             for block in 0..64 {
