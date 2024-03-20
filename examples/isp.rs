@@ -599,7 +599,19 @@ impl Smfi for Pmc {
 }
 
 fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
-    let rom_size = 128 * 1024;
+    // There are two supported ROM sizes, 128KiB and 256KiB
+    let rom_size = if firmware.len() > 128 * 1024 {
+        256 * 1024
+    } else {
+        128 * 1024
+    };
+
+    if firmware.len() > rom_size {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!("firmware size {} exceeds rom size {}", firmware.len(), rom_size)
+        ));
+    }
 
     let mut spi_bus = SpiBus::new(port, true)?;
     let mut spi = SpiRom::new(&mut spi_bus);
