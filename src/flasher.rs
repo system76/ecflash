@@ -14,16 +14,11 @@ pub struct Flasher {
 impl Flasher {
     pub fn new(mut ec: EcFlash) -> Self {
         let size = ec.size();
-        Self {
-            ec,
-            size,
-        }
+        Self { ec, size }
     }
 
     unsafe fn enter_follow_mode(&mut self) -> Result<(), ()> {
-        unsafe {
-            self.ec.cmd(1)
-        }
+        unsafe { self.ec.cmd(1) }
     }
 
     unsafe fn spi_cmd(&mut self, cmd: u8) -> Result<(), ()> {
@@ -48,9 +43,7 @@ impl Flasher {
     }
 
     unsafe fn exit_follow_mode(&mut self) -> Result<(), ()> {
-        unsafe {
-            self.ec.cmd(5)
-        }
+        unsafe { self.ec.cmd(5) }
     }
 
     unsafe fn spi_wait(&mut self) -> Result<(), ()> {
@@ -125,7 +118,7 @@ impl Flasher {
     }
 
     pub unsafe fn erase<F: Fn(usize)>(&mut self, callback: F) -> Result<(), ()> {
-        for sector in 0..self.size/65536 {
+        for sector in 0..self.size / 65536 {
             for block in 0..64 {
                 let index = sector * 65536 + block * 1024;
 
