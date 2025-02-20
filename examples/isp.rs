@@ -183,7 +183,7 @@ impl<'a, T: Smfi> SpiBus<'a, T> {
     }
 }
 
-impl<'a, T: Smfi> Drop for SpiBus<'a, T> {
+impl<T: Smfi> Drop for SpiBus<'_, T> {
     fn drop(&mut self) {
         let _ = self.reset();
     }
@@ -339,7 +339,7 @@ impl<'a, 't, T: Smfi> SpiRom<'a, 't, T> {
     }
 }
 
-impl<'a, 't, T: Smfi> Drop for SpiRom<'a, 't, T> {
+impl<T: Smfi> Drop for SpiRom<'_, '_, T> {
     fn drop(&mut self) {
         let _ = self.write_disable();
     }
@@ -528,32 +528,36 @@ impl Pmc {
 
     pub unsafe fn command(&mut self, data: u8) {
         //eprintln!("PMC command {:02X}", data);
-        while ! self.can_write() {}
+        unsafe { while !self.can_write() {} }
         self.cmd.write(data);
     }
 
     pub unsafe fn read(&mut self) -> u8 {
         //eprintln!("PMC read");
-        while ! self.can_read() {}
+        unsafe { while !self.can_read() {} }
         self.data.read()
     }
 
     pub unsafe fn write(&mut self, data: u8) {
         //eprintln!("PMC write {:02X}", data);
-        while ! self.can_write() {}
+        unsafe { while !self.can_write() {} }
         self.data.write(data);
     }
 
     pub unsafe fn acpi_read(&mut self, address: u8) -> u8 {
-        self.command(0x80);
-        self.write(address);
-        self.read()
+        unsafe {
+            self.command(0x80);
+            self.write(address);
+            self.read()
+        }
     }
 
     pub unsafe fn acpi_write(&mut self, address: u8, data: u8) {
-        self.command(0x81);
-        self.write(address);
-        self.write(data);
+        unsafe {
+            self.command(0x81);
+            self.write(address);
+            self.write(data);
+        }
     }
 }
 

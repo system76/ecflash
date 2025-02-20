@@ -21,7 +21,7 @@ fn tcpc_read(ec: &mut EcFlash, command: u8) -> Result<u16, ()> {
 
     Ok(
         (buf[2] as u16) |
-        (buf[3] as u16) << 8
+        ((buf[3] as u16) << 8)
     )
 }
 
@@ -54,7 +54,7 @@ fn tcpc_test() -> Result<(), ()> {
 }
 
 fn main() {
-    extern {
+    unsafe extern "C" {
         fn iopl(level: isize) -> isize;
     }
 
@@ -64,7 +64,6 @@ fn main() {
             eprintln!("Failed to get I/O permission: {}", io::Error::last_os_error());
             process::exit(1);
         }
-
     }
 
     tcpc_test().expect("Failed to run TCPM test");
