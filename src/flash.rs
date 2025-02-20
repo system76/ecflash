@@ -17,15 +17,15 @@ pub struct EcFlash {
 
 impl EcFlash {
     pub unsafe fn sts(&mut self) -> u8 {
-        inb(self.cmd_port)
+        unsafe { inb(self.cmd_port) }
     }
 
     pub unsafe fn can_read(&mut self) -> bool {
-        self.sts() & 1 == 1
+        unsafe { self.sts() & 1 == 1 }
     }
 
     pub unsafe fn wait_read(&mut self, mut timeout: usize) -> Result<(), ()> {
-        while ! self.can_read() && timeout > 0 {
+        while ! unsafe { self.can_read() } && timeout > 0 {
             timeout -= 1;
         }
 
@@ -37,11 +37,11 @@ impl EcFlash {
     }
 
     pub unsafe fn can_write(&mut self) -> bool {
-        self.sts() & 2 == 0
+        unsafe { self.sts() & 2 == 0 }
     }
 
     pub unsafe fn wait_write(&mut self, mut timeout: usize) -> Result<(), ()> {
-        while ! self.can_write() && timeout > 0 {
+        while ! unsafe { self.can_write() } && timeout > 0 {
             timeout -= 1;
         }
 
@@ -54,8 +54,8 @@ impl EcFlash {
 
     pub unsafe fn flush(&mut self) -> Result<(), ()> {
         let mut i = TIMEOUT;
-        while self.can_read() && i > 0 {
-            inb(self.data_port);
+        while unsafe { self.can_read() } && i > 0 {
+            unsafe { inb(self.data_port) };
             i -= 1;
         }
 
@@ -67,57 +67,69 @@ impl EcFlash {
     }
 
     pub unsafe fn cmd(&mut self, data: u8) -> Result<(), ()> {
-        self.wait_write(TIMEOUT)?;
-        outb(self.cmd_port, data);
-        self.wait_write(TIMEOUT)
+        unsafe {
+            self.wait_write(TIMEOUT)?;
+            outb(self.cmd_port, data);
+            self.wait_write(TIMEOUT)
+        }
     }
 
     pub unsafe fn read(&mut self) -> Result<u8, ()> {
-        self.wait_read(TIMEOUT)?;
-        Ok(inb(self.data_port))
+        unsafe {
+            self.wait_read(TIMEOUT)?;
+            Ok(inb(self.data_port))
+        }
     }
 
     pub unsafe fn write(&mut self, data: u8) -> Result<(), ()> {
-        self.wait_write(TIMEOUT)?;
-        outb(self.data_port, data);
-        self.wait_write(TIMEOUT)
+        unsafe {
+            self.wait_write(TIMEOUT)?;
+            outb(self.data_port, data);
+            self.wait_write(TIMEOUT)
+        }
     }
 
     pub unsafe fn get_param(&mut self, param: u8) -> Result<u8, ()> {
-        self.cmd(0x80)?;
-        self.write(param)?;
-        self.read()
+        unsafe {
+            self.cmd(0x80)?;
+            self.write(param)?;
+            self.read()
+        }
     }
 
     pub unsafe fn set_param(&mut self, param: u8, data: u8) -> Result<(), ()> {
-        self.cmd(0x81)?;
-        self.write(param)?;
-        self.write(data)
+        unsafe {
+            self.cmd(0x81)?;
+            self.write(param)?;
+            self.write(data)
+        }
     }
 
     pub unsafe fn fcommand(&mut self, cmd: u8, dat: u8, buf: &mut [u8; 4]) -> Result<(), ()> {
-        self.set_param(0xF9, dat)?;
-        self.set_param(0xFA, buf[0])?;
-        self.set_param(0xFB, buf[1])?;
-        self.set_param(0xFC, buf[2])?;
-        self.set_param(0xFD, buf[3])?;
+        unsafe {
+            self.set_param(0xF9, dat)?;
+            self.set_param(0xFA, buf[0])?;
+            self.set_param(0xFB, buf[1])?;
+            self.set_param(0xFC, buf[2])?;
+            self.set_param(0xFD, buf[3])?;
 
-        self.set_param(0xF8, cmd)?;
+            self.set_param(0xF8, cmd)?;
 
-        buf[0] = self.get_param(0xFA)?;
-        buf[1] = self.get_param(0xFB)?;
-        buf[2] = self.get_param(0xFC)?;
-        buf[3] = self.get_param(0xFD)?;
+            buf[0] = self.get_param(0xFA)?;
+            buf[1] = self.get_param(0xFB)?;
+            buf[2] = self.get_param(0xFC)?;
+            buf[3] = self.get_param(0xFD)?;
 
-        self.set_param(0xF8, 0x00)
+            self.set_param(0xF8, 0x00)
+        }
     }
 
     pub unsafe fn get_str(&mut self, index: u8) -> Result<String, ()> {
         let mut string = String::new();
 
-        self.cmd(index)?;
+        unsafe { self.cmd(index)? };
         for _i in 0..16 {
-            let byte = self.read()?;
+            let byte = unsafe { self.read()? };
             if byte == b'$' {
                 break;
             } else {

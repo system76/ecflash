@@ -21,7 +21,7 @@ fn validate<T: PartialEq + Display, F: FnMut() -> T>(mut f: F, attempts: usize) 
 }
 
 fn main() {
-    extern {
+    unsafe extern "C" {
         fn iopl(level: isize) -> isize;
     }
 

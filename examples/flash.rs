@@ -6,7 +6,7 @@ use ecflash::{EcFlash, Flasher};
 use std::{env, fs, io, process, thread, time};
 
 fn main() {
-    extern {
+    unsafe extern "C" {
         fn iopl(level: isize) -> isize;
     }
 
