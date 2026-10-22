@@ -729,7 +729,7 @@ fn isp_inner<T: Any + Smfi>(port: &mut T, firmware: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn isp(internal: bool, file: &str) -> Result<()> {
+fn isp(serial_opt: Option<String>, file: &str) -> Result<()> {
     // Read firmware data
     let firmware = {
         let mut firmware = fs::read(file)?;
@@ -747,7 +747,30 @@ fn isp(internal: bool, file: &str) -> Result<()> {
         firmware
     };
 
-    if internal {
+    if let Some(serial) = serial_opt {
+        eprintln!("Flashing {} over serial device {}", file, serial);
+
+        // Open arduino console
+        let mut port = ParallelArduino::new(serial)?;
+
+        // Read ID
+        let mut id = [0; 3];
+        port.address(0)?;
+        port.read(&mut id[0..1])?;
+        port.address(1)?;
+        port.read(&mut id[1..2])?;
+        port.address(2)?;
+        port.read(&mut id[2..3])?;
+
+        let ecid = ((id[0] as u16) << 8) | (id[1] as u16);
+
+        eprintln!("ID: {:04X} VER: {}", ecid, id[2]);
+        assert!(EC_KNOWN_IDS.contains(&ecid), "Unknown ID: {:04X}", ecid);
+
+        isp_inner(&mut port, &firmware)
+    } else  {
+        eprintln!("Flashing {} internally", file);
+
         unsafe {
             if libc::iopl(3) < 0 {
                 eprintln!(
@@ -809,39 +832,22 @@ fn isp(internal: bool, file: &str) -> Result<()> {
                 panic!("Failed to enter scratch ROM")
             }
         }
-    } else {
-        // Open arduino console
-        let mut port = ParallelArduino::new("/dev/ttyACM0")?;
-
-        // Read ID
-        let mut id = [0; 3];
-        port.address(0)?;
-        port.read(&mut id[0..1])?;
-        port.address(1)?;
-        port.read(&mut id[1..2])?;
-        port.address(2)?;
-        port.read(&mut id[2..3])?;
-
-        let ecid = ((id[0] as u16) << 8) | (id[1] as u16);
-
-        eprintln!("ID: {:04X} VER: {}", ecid, id[2]);
-        assert!(EC_KNOWN_IDS.contains(&ecid), "Unknown ID: {:04X}", ecid);
-
-        isp_inner(&mut port, &firmware)
     }
 }
 
 fn main() {
+    let mut serial_opt = Some("/dev/ttyACM0".to_string());
     let mut file_opt = None;
-    let mut internal = false;
     for arg in env::args().skip(1) {
         if arg == "--internal" {
-            internal = true;
-        } else {
+            serial_opt = None;
+        } else if file_opt.is_none() {
             file_opt = Some(arg);
+        } else {
+            serial_opt = Some(arg);
         }
     }
     //TODO: better errors
     let file = file_opt.expect("no firmware file provided");
-    isp(internal, &file).expect("failed to flash");
+    isp(serial_opt, &file).expect("failed to flash");
 }
